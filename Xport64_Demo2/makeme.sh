@@ -1,0 +1,1 @@
+wine cmd.exe /c MakeMe.bat
