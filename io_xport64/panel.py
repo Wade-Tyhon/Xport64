@@ -1005,7 +1005,7 @@ class Object_Tabs_Xport64(bpy.types.Panel):
                                     row = col.row()
                                     row.label(text = "Angle: X. %i  Y. %i, Z. %i" % (matlights.light_dir3[0]*90, matlights.light_dir3[2]*90, matlights.light_dir3[1]*90))
                         
-                    elif matlights.custom_mat_lights == False or matlights.qty_lights == 0:
+                    elif matlights.custom_lights == False or matlights.qty_lights == 0:
                         row = renderBox.row()     
                         row.prop(matlights, "light_struct_name")
                         row.enabled = False
