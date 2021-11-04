@@ -1,7 +1,7 @@
 # Xport64
 A Blender plug-in for exporting models as N64 display lists. Supports Blender 2.70-2.79 using Cycles Renderer. 2.8+ compatability coming soon. 
 
-*READ BEFORE USING:* This is a BRAND NEW add-on and thus has not been thoroughly tested with multiple workflows. It is highly suggested that you initially work with a duplicate of your project to make sure nothing in this add-on breaks your project.
+*READ BEFORE USING:* This is a BRAND NEW add-on and thus has not been thoroughly tested by other users yet. It is highly recommended that you initially work with a duplicate of your project to make sure nothing in this add-on breaks your project.
 
 ## Enabling on Blender 2.70-2.79 w/ Windows:
 
@@ -18,7 +18,7 @@ A Blender plug-in for exporting models as N64 display lists. Supports Blender 2.
 
 ## Tips on Utilizing This Add-On:
 
-*READ BEFORE USING:* This is a BRAND NEW add-on and thus has not been thoroughly tested with multiple workflows. It is highly suggested that you initially work with a duplicate of your project to make sure nothing in this add-on breaks your project.
+*READ BEFORE USING:* This is a BRAND NEW add-on and thus has not been thoroughly tested by other users yet. It is highly recommended that you initially work with a duplicate of your project to make sure nothing in this add-on breaks your project.
 
 1) To work properly, this project must:
   - Use Cycles Mode and use Nodes and Materials to properly export.
