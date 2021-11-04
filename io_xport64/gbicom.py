@@ -1,15 +1,15 @@
 bl_info = {
-  "name": "export",
+  "name": "Xport64 v1.0",
   "description": "Export to N64 Display List",
   "author": "WadeMalone",
   "version": (1, 0, 1),
-  "blender": (2, 70, 0),
+  "blender": (2, 76, 0),
   "warning": "",
-  "location": "View3D > Tool",
+  "location": "File > Import-Export",
   "wiki_url": "",
   "tracker_url": "",
   "support": "COMMUNITY",
-  "category": "N64 Model Editing" }
+  "category": "Import-Export" }  
 
 import bpy
 import string
