@@ -2,7 +2,7 @@ bl_info = {
   "name": "Xport64 v1.0",
   "description": "Export to N64 Display List",
   "author": "WadeMalone",
-  "version": (1, 0, 0),
+  "version": (1, 0, 1),
   "blender": (2, 76, 0),
   "warning": "",
   "location": "File > Import-Export",
@@ -10,7 +10,7 @@ bl_info = {
   "tracker_url": "",
   "support": "COMMUNITY",
   "category": "Import-Export" }   
-  
+
 #NOTES: While this version shares almost none of the original code, this project was kick started by using Blen64 by GCaldL, an early N64 Blender plug in. 
 #Thanks to him for taking that first step! 
 
@@ -18,10 +18,13 @@ bl_info = {
 #TO DO: gSP2Triangle, clean up and comment code
 #TO-DO NOTES - export.py: Completely re-do export process from scratch - simplify and clean up process
 
-#-------------------------------------------------------------------------------------------------
-#NOTES: The following external scripts/modules should be placed in the same directory as this one
-#-------------------------------------------------------------------------------------------------
-
+#---------------------------------------------------------------------------------------------------------
+#-----------------------------------------MOST RECENT UPDATES---------------------------------------------
+#---------------------------------------------------------------------------------------------------------
+#UPDATE 11/4/2021:  Several error checks added to __init__.py export.py and panel.py and fixes in case user 
+#                   attempts to export an object with no material or uses a texture material but does not 
+#                   include an Image Texture node / image
+#---------------------------------------------------------------------------------------------------------
 
 #If this is not first start up and you need to reload the script, press F8 in the blender window. This will force reload all __init__. 
 #If you have done this reload process, then the following if statement will run:
@@ -196,14 +199,22 @@ class ExportN64DisplayList(bpy.types.Operator):
     exportFrame = bpy.context.scene.frame_current
     
     self.printIncludes(file) #print scene includes
-        
-    file.write("\n Vector3 tempObjVectorPos;\n Vector3 tempObjVectorRot;\n Vector3 tempObjVectorScl;\n\n ")
+     
+#NOTE ----- Removed because this will be part of the next update. The full scripts for this are not yet available.     
+    #file.write("\n Vector3 tempObjVectorPos;\n Vector3 tempObjVectorRot;\n Vector3 tempObjVectorScl;\n\n ")
     
     
     Lights_Xport64.exportSCNLights(self, file)
-    for obj in bpy.context.scene.objects:
+    for obj in bpy.context.scene.objects:    
         if obj.type == 'MESH' and descends(bpy.context.selected_objects, obj):
-            Lights_Xport64.exportOBJLights(self, file, obj)
+            if obj.data.materials != None and obj.active_material != None:
+                Lights_Xport64.exportOBJLights(self, file, obj)
+                
+            else:
+                #print("Make sure all objects contain a material.")
+                print("Object %s does not have a material assigned!" % obj.name)
+                self.report({'WARNING'}, "Xport64 WARNING ----- Object %s does not have a material assigned and could not be exported." % obj.name)
+                return {'FINISHED'}
     
     for obj in bpy.context.scene.objects:
       if obj.type == 'MESH' and descends(bpy.context.selected_objects, obj):
@@ -211,18 +222,25 @@ class ExportN64DisplayList(bpy.types.Operator):
         
         #In order to render the object properly, we need to triangulate any quads.        
         originalMesh = obj.to_mesh(bpy.context.scene, True, 'PREVIEW') #duplicate Mesh at the time of export
-        tempMesh = obj.to_mesh(bpy.context.scene, True, 'PREVIEW') #create a duplicate of the Mesh for triangulating
-        mesh_triangulate(tempMesh) #triangulate this temporary mesh
-        obj.data = tempMesh #set objects current mesh to temporary mesh
+
+        if obj.data.materials != None and obj.active_material != None:
+            tempMesh = obj.to_mesh(bpy.context.scene, True, 'PREVIEW') #create a duplicate of the Mesh for triangulating 
+            mesh_triangulate(tempMesh) #triangulate this temporary mesh
+            obj.data = tempMesh #set objects current mesh to temporary mesh
+            
+            objectName = self.clean_name(obj.name)
+            
+            VTX_Xport64.exportVert(self, file, obj,objCounter)
+            
+            Poly_Xport64.exportPoly(self, file, obj,objCounter)
+            objCounter +=1
+            bpy.context.scene.frame_set(0)
+            obj.data = originalMesh #return original, un-triangulated mesh
+        else:
+            print("Object %s does not have a material assigned!" % obj.name)
+            self.report({'WARNING'}, "Xport64 WARNING ----- Object %s does not have a material assigned and could not be exported." % obj.name)
+            return {'FINISHED'}
         
-        objectName = self.clean_name(obj.name)
-        
-        VTX_Xport64.exportVert(self, file, obj,objCounter)
-        
-        Poly_Xport64.exportPoly(self, file, obj,objCounter)
-        objCounter +=1
-        bpy.context.scene.frame_set(0)
-        obj.data = originalMesh #return original, un-triangulated mesh
     
     if sceneProps.create_header_file == True:        
         fileH = open(self.directory + self.filename + '_%s_defs.h'% sceneProps.scene_header_id, 'w')
