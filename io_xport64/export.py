@@ -1,16 +1,16 @@
 bl_info = {
-  "name": "export",
+  "name": "Xport64 v1.0",
   "description": "Export to N64 Display List",
   "author": "WadeMalone",
   "version": (1, 0, 1),
-  "blender": (2, 70, 0),
+  "blender": (2, 76, 0),
   "warning": "",
-  "location": "View3D > Tool",
+  "location": "File > Import-Export",
   "wiki_url": "",
   "tracker_url": "",
   "support": "COMMUNITY",
-  "category": "N64 Model Editing" }
-
+  "category": "Import-Export" }   
+  
 import bpy
 import os
 import random
@@ -26,14 +26,11 @@ from .gbicom import TEXTURE_4B_TLUT, PRE_BUILT_SETTINGS, GBI_Xport64
 #from __init__ import roundtoquarter, isclose, roundtohalf
 
 #---------------------------------------------------------------------------------------------------------
-#IN PROGRESS 10/15/2021:
-#
-#PRIORITY    
-#       - THOROUGHLY TEST ALL EXPORTS 
-#       - Add Scene lights, object lights and material light settings
-#       - Support for custom external display lists for materials and objects
-#           - Object level display lists is complete#
-#       - Continue improving UI for ease of use
+#-----------------------------------------MOST RECENT UPDATES---------------------------------------------
+#---------------------------------------------------------------------------------------------------------
+#UPDATE 11/4/2021:  Several error checks added to __init__.py export.py and panel.py and fixes in case user 
+#                   attempts to export an object with no material or uses a texture material but does not 
+#                   include an Image Texture node / image
 #---------------------------------------------------------------------------------------------------------
 #---------------------------------------------------------------------------------------------------------
 #TO DO NOTES 10/19/2021:        
@@ -1078,6 +1075,7 @@ class Poly_Xport64(bpy.types.Operator):
 #IMPORTANT NOTE: ---- TEXTURE USE REQUIRES CYCLES RENDER ---- 
                     textureSize = [0,0]                        
                     if 'Image Texture' in activeMat.node_tree.nodes:
+                        print("Texture Found!")
                         textureImage = activeMat.node_tree.nodes["Image Texture"].image
                         textureName = textureImage.name
                         
@@ -1101,6 +1099,7 @@ class Poly_Xport64(bpy.types.Operator):
                         textureFilter = matProperties.filtering_commands
                             
                     else:
+                        print("WARNING: Material Commands for TEXTURE_4B require texture but no Texture Found!")
                         objExportTextureCoords = False
                        
                     delayVertexCall = True
@@ -1216,19 +1215,37 @@ class Poly_Xport64(bpy.types.Operator):
                                         
                                         if "SetRenderMode" in GBIDictionary:
                                             o.write(GBIDictionary["SetRenderMode"]% (DL_start_setting, DL_name_setting, DL_end_setting))
-                                            
+                                         
                                         if "LoadTextureBlock_4b" in GBIDictionary:
-                                            o.write(GBIDictionary["LoadTextureBlock_4b"]% (DL_start_setting, DL_name_setting, textureName, 
-                                                textureSize[0],textureSize[1], matWrapSettings[0], matWrapSettings[1], matMaskSettings[0], matMaskSettings[1], 
-                                                matShiftSettings[0], matShiftSettings[1], DL_end_setting))
+                                            if objExportTextureCoords == True:
+                                                o.write(GBIDictionary["LoadTextureBlock_4b"]% (DL_start_setting, DL_name_setting, textureName, 
+                                                    textureSize[0],textureSize[1], matWrapSettings[0], matWrapSettings[1], matMaskSettings[0], matMaskSettings[1], 
+                                                    matShiftSettings[0], matShiftSettings[1], DL_end_setting))
+                                            else:
+                                                o.write("\n\n//Xport64 WARNING ----- GBI Commands for LoadTextureBlock_4b require texture but no Image Texture node found! \n\n" )
+                                                print("Xport64 WARNING ----- %s ----- GBI Commands for LoadTextureBlock_4b require a texture but no Image Texture node found!" % obj.name)
+                                                self.report({'WARNING'}, "Xport64 WARNING ----- %s ----- GBI Commands for LoadTextureBlock_4b require a texture but no Image Texture node found!" % obj.name)
+                                                return {'FINISHED'}   
                                         
                                         if "LoadTextureBlock" in GBIDictionary:
-                                            o.write(GBIDictionary["LoadTextureBlock"]% (DL_start_setting, DL_name_setting, textureName, 
-                                                textureSize[0],textureSize[1], matWrapSettings[0], matWrapSettings[1], matMaskSettings[0], matMaskSettings[1], 
-                                                matShiftSettings[0], matShiftSettings[1], DL_end_setting))
-                                                
-                                        if "LoadTLUT" in GBIDictionary:    
-                                            o.write(GBIDictionary["LoadTLUT"]% (DL_start_setting, DL_name_setting, tlutName, DL_end_setting))
+                                            if objExportTextureCoords == True:
+                                                o.write(GBIDictionary["LoadTextureBlock"]% (DL_start_setting, DL_name_setting, textureName, 
+                                                    textureSize[0],textureSize[1], matWrapSettings[0], matWrapSettings[1], matMaskSettings[0], matMaskSettings[1], 
+                                                    matShiftSettings[0], matShiftSettings[1], DL_end_setting))
+                                            else:
+                                                o.write("\n\n//Xport64 WARNING ----- GBI Commands for LoadTextureBlock require texture but no Image Texture node found! \n\n" )
+                                                print("Xport64 WARNING ----- %s ----- GBI Commands for LoadTextureBlock require a texture but no Image Texture node found!" % obj.name)
+                                                self.report({'WARNING'}, "Xport64 WARNING ----- %s ----- GBI Commands for LoadTextureBlock require a texture but no Image Texture node found!" % obj.name)
+                                                return {'FINISHED'}      
+                                              
+                                        if "LoadTLUT" in GBIDictionary:
+                                            if objExportTextureCoords == True:
+                                                o.write(GBIDictionary["LoadTLUT"]% (DL_start_setting, DL_name_setting, tlutName, DL_end_setting))
+                                            else:
+                                                o.write("\n\n//Xport64 WARNING ----- GBI Commands for LoadTLUT require texture but no Image Texture node found! \n\n" )
+                                                print("Xport64 WARNING ----- %s ----- GBI Commands for LoadTLUT require a texture but no Image Texture node found!" % obj.name)
+                                                self.report({'WARNING'}, "Xport64 WARNING ----- %s ----- GBI Commands for LoadTLUT require a texture but no Image Texture node found!" % obj.name)
+                                                return {'FINISHED'}
                                         
                                         if "SetTextureFilter" in GBIDictionary:     
                                             o.write(GBIDictionary["SetTextureFilter"]% (DL_start_setting, DL_name_setting, textureFilter, DL_end_setting))
