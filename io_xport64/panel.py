@@ -138,6 +138,11 @@ class MaterialProp_Xport64(bpy.types.PropertyGroup):
     prim_color = bpy.props.FloatVectorProperty(name = "Material - Primitive Color", subtype = "COLOR", size = 4, min = 0.0, max = 1.0, default = (0.938,0.0,1.0,1.0))
     env_color = bpy.props.FloatVectorProperty(name = "Scene - Environment Color", subtype = "COLOR", size = 4, min = 0.0, max = 1.0, default = (0.0,0.174,0.292,1.0))
     
+    
+    
+    
+    
+#VERSION NOTE ----- Provided it causes no issues, these variables will be removed as this has been moved to a property that is used by materials, scenes, and objects
     custom_mat_lights = bpy.props.BoolProperty(name = "Custom Material Light",  default = False  )
     qty_mat_lights = bpy.props.IntProperty(name = "Number of Lights", min = 1, max = 3, default = 1)
     
@@ -149,6 +154,11 @@ class MaterialProp_Xport64(bpy.types.PropertyGroup):
     light_dir2 = bpy.props.FloatVectorProperty(name = "Light 2 Angle", subtype = "DIRECTION", size = 3, min = 0, max = 1.0, default = (1.0,1.0,1.0))
     mat_dir_lights3 = bpy.props.FloatVectorProperty(name = "Light 3 Color", subtype = "COLOR", size = 3, min = 0, max = 1.0, default = (1.0,0.527,0.0))
     light_dir3 = bpy.props.FloatVectorProperty(name = "Light 3 Angle", subtype = "DIRECTION", size = 3, min = 0, max = 1.0, default = (1.0,1.0,1.0))
+#VERSION NOTE ----- Provided it causes no issues, these variables will be removed as this has been moved to a property that is used by materials, scenes, and objects    
+    
+  
+  
+    
     
 #NOTE: By default, Xport64 will use the image file's resolution for texture commands. But this can be overridden using custom_tex_res.
     custom_tex_res = bpy.props.BoolProperty(name = "Override Texture Resolution", default = False)
@@ -521,7 +531,7 @@ class Scene_Xport64(bpy.types.Panel):
                         row = col.row()
                         row.label(text = "Angle: X. %i  Y. %i, Z. %i" % (scenelights.light_dir3[0]*90, scenelights.light_dir3[2]*90, scenelights.light_dir3[1]*90))
             
-        elif scenelights.custom_mat_lights == False or scenelights.qty_lights == 0:
+        elif scenelights.custom_lights == False or scenelights.qty_lights == 0:
             row = renderBox.row()     
             row.prop(scenelights, "light_struct_name")
             row.enabled = False
