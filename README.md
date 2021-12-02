@@ -29,12 +29,17 @@ A Blender plug-in for exporting models as N64 display lists. Supports Blender 2.
 3) When texturing, keep in mind that S,T coordinates on N64 work slightly differently than UV coordinates in Blender. The Y value is flipped so that +1 becomes -1 on N64. Just keep this in mind when texturing.
 4) Greatest compatability is with Blender 2.79 since it is the most fully featured when it comes to using Vertex Colors (very important with N64 development!) If you are using Windows 10, I recommend 2.79. If you are developing in Windows XP, I recommend 2.76.
 
+## Known errors addressed in the most recent version:
+- Negative UV coordinates are not currently supported becaues of the use of Modify Vertex requiring hex values.
+- Fixed error where obj light name was triggering a duplicate light name for material lights, unusedLight variable is now re-set with every material check. 
+- Added some guidance to plug-in on what is needed to properly export. If no material or node is present, an error should be thrown. 
+- Fixed collision export bug caused by old code not being completely scrubbed. In previous build, some faces in a collision object would not export.
+
+## New Features Added:
+- Added new UI updates 
+- Added new DEBUG and error messages
+- Added new object rig options to use default Xport64 rig or to include your own command
+- Updated Scene/Obj/Mat light interface to optionally enter your values manually
 
 ## Known errors soon to be addressed:
-1) Trying to export before project is fully set up with a material and nodes, the plug-in will stop the export process. I'll be adding a warning to the next build to avoid this happening. 
-- Temporary solution: If either of these happen to you, it should not harm your project. But it might have 'triangulated' your project already if your model was in quads. *If this does happen to you, simply 'undo' after the exporter exits early.* 
-- Permanent solution: This will be addressed in the next commit to check before triangulation, quit the export process before it begins, and warn the user.
 
-2) Negative UV coordinates are not currently supported becaues of the use of Modify Vertex requiring hex values.
-- Temporary solution: While your Blender project will export correctly, it will not compile in your N64 project. Simply return to your Blender project, adjust the coordinates and re-export.
-- Permanent solution: I am looking into updating this with a solution or a warning in the next version. 
