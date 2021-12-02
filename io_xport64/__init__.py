@@ -19,11 +19,30 @@ bl_info = {
 #TO-DO NOTES - export.py: Completely re-do export process from scratch - simplify and clean up process
 
 #---------------------------------------------------------------------------------------------------------
+#--------------------------------------------NEXT UPDATES-------------------------------------------------
+#---------------------------------------------------------------------------------------------------------
+#                   - Add settings for fully customized GBI Commands
+#                   - Add setting for printing Macros GBI Commands (that take arguments)
+#---------------------------------------------------------------------------------------------------------
+
+#---------------------------------------------------------------------------------------------------------
 #-----------------------------------------MOST RECENT UPDATES---------------------------------------------
 #---------------------------------------------------------------------------------------------------------
-#UPDATE 11/4/2021:  Several error checks added to __init__.py export.py and panel.py and fixes in case user 
-#                   attempts to export an object with no material or uses a texture material but does not 
-#                   include an Image Texture node / image
+#UPDATE 11/30/2021: 
+#                   - Fixed error with negative S/T variables
+#                   - Added new UI updates  
+#                   - Added DEBUG message for material light
+#                   - Fixed collision export bug caused by old code not being completely scrubbed. In previous build, some faces in a collision object would not export if UV colors or texture were different on some faces.
+#                   - Added new object rig options to use default Xport64 rig or to include your own command
+#                   - Updated Scene/Obj/Mat light to optionally enter your values manually
+#                   - Fixed error where obj light name was triggering a duplicate light name for material lights, unusedLight variable is now re-set with every material check. 
+#                   - Added some guidance to plug-in on what is needed to properly use this plug-in
+#UPDATE 11/5/2021:  - Fixed error where material and object lights were not printing if set to ambient only with no directional(aka diffuse) lights.
+#                   - Added optional animFrame parameter for dynamic display lists as an option for updating the current frame of an animation. Enable as needed for each object.
+#                   - Added TEXTURE_4B_UNLIT to pre-built commands for "emmissive" unlit textured objects. 
+#UPDATE 11/4/2021:  - Several error checks added to __init__.py export.py and panel.py and fixes in case user 
+#                   attempts to export an object with no material or uses attempts to use a texture material on 
+#                   an object lacking an Image Texture node and image.
 #---------------------------------------------------------------------------------------------------------
 
 #If this is not first start up and you need to reload the script, press F8 in the blender window. This will force reload all __init__. 
@@ -35,11 +54,11 @@ if "bpy" in locals():
     imp.reload(gbicom)
 
 #if you have not loaded your scripts yet, the following lines of code will run:    
-from .panel import ObjectProp_Xport64, MaterialProp_Xport64, SceneProp_Xport64, LightProp_Xport64, Setup_Xport64, Object_Tabs_Xport64, Scene_Xport64, Object_Xport64
+from .panel import ObjectProp_Xport64, MaterialProp_Xport64, SceneProp_Xport64, LightProp_Xport64, Setup_Xport64, Object_Tabs_Xport64, Scene_Xport64, AssignTexture_Xport64, Object_Xport64
 from .export import VTX_Xport64, Lights_Xport64, Poly_Xport64, Header_Xport64
 from .gbicom import GBI_Xport64, TEXTURE_4B_TLUT
     
-externclasses = [ ObjectProp_Xport64, MaterialProp_Xport64, GBI_Xport64, SceneProp_Xport64, LightProp_Xport64, Setup_Xport64, Object_Tabs_Xport64, Scene_Xport64, Object_Xport64, VTX_Xport64, Lights_Xport64, Poly_Xport64, Header_Xport64]
+externclasses = [ ObjectProp_Xport64, MaterialProp_Xport64, GBI_Xport64, SceneProp_Xport64, LightProp_Xport64, Setup_Xport64, AssignTexture_Xport64, Object_Tabs_Xport64, Scene_Xport64, Object_Xport64, VTX_Xport64, Lights_Xport64, Poly_Xport64, Header_Xport64]
 
 #-------------------------------------------------------------------------------------------------
 
@@ -55,6 +74,8 @@ import math
 import bpy
 import mathutils
 import copy
+import bpy.utils.previews
+
 
 #---------------------------------------------------------------------------------------
 #TO-DO NOTES: Begin editing here to change the Xport64 Object Settings Window in Blender
@@ -76,6 +97,7 @@ from bpy.types import (
     PropertyGroup,
 )
 
+xport64_icons = None
 #from panel import MyProperties
 
 def descends(parents, child):
@@ -175,6 +197,8 @@ class ExportN64DisplayList(bpy.types.Operator):
             file.write('#include "%s"\n'%sceneprops.scene_Includes9)
         if sceneprops.scene_Includes10 != "":    
             file.write('#include "%s"\n'%sceneprops.scene_Includes10)
+            
+            
 
   def execute(self, context):
     self.usedUVValues = [[[]]] #This stores the UV values actually used in the VTXlist. It is used for comparison in the polylist
@@ -199,12 +223,16 @@ class ExportN64DisplayList(bpy.types.Operator):
     exportFrame = bpy.context.scene.frame_current
     
     self.printIncludes(file) #print scene includes
-     
-#NOTE ----- Removed because this will be part of the next update. The full scripts for this are not yet available.     
-    #file.write("\n Vector3 tempObjVectorPos;\n Vector3 tempObjVectorRot;\n Vector3 tempObjVectorScl;\n\n ")
+    
+#NOTE ----- Before beginning each object's Export Vert/Poly, create temp variables that are shared between them (lights, pos/rot/scl, etc):
     
     
+#NOTE ----- For each scene, check to see if any of the objects use the "OBJ VARIABLES" animation method.
+#           If so, then after checking all lights in each object, print temp variable initializing
+    
+    tempObjVariables = False    
     Lights_Xport64.exportSCNLights(self, file)
+    
     for obj in bpy.context.scene.objects:    
         if obj.type == 'MESH' and descends(bpy.context.selected_objects, obj):
             if obj.data.materials != None and obj.active_material != None:
@@ -215,6 +243,18 @@ class ExportN64DisplayList(bpy.types.Operator):
                 print("Object %s does not have a material assigned!" % obj.name)
                 self.report({'WARNING'}, "Xport64 WARNING ----- Object %s does not have a material assigned and could not be exported." % obj.name)
                 return {'FINISHED'}
+                
+            if obj.obj_props.anim_Method == "OBJ VARIABLES":
+                tempObjVariables = True
+    
+    if tempObjVariables == True:
+        file.write("\n   //NOTE ----- One or more objects is animated with a rig, so include Pos, Rot, Scl variables: \n")
+        file.write("   Vector3 %s_TempVectorPos = {0,0,0}; \n" % sceneProps.current_scene_id)
+        file.write("   Vector3 %s_TempVectorRot = {0,0,0}; \n" % sceneProps.current_scene_id)
+        file.write("   Vector3 %s_TempVectorScl = {0,0,0}; \n\n" % sceneProps.current_scene_id)
+    
+    
+    
     
     for obj in bpy.context.scene.objects:
       if obj.type == 'MESH' and descends(bpy.context.selected_objects, obj):
@@ -231,6 +271,8 @@ class ExportN64DisplayList(bpy.types.Operator):
             objectName = self.clean_name(obj.name)
             
             VTX_Xport64.exportVert(self, file, obj,objCounter)
+            
+            
             
             Poly_Xport64.exportPoly(self, file, obj,objCounter)
             objCounter +=1
@@ -261,24 +303,47 @@ def menu_func(self, context):
     self.layout.operator(ExportN64DisplayList.bl_idname, text="N64 Display List exporter V1.1")
     
 
+    
+
+    
 def register():
     bpy.utils.register_class(ExportN64DisplayList)
     bpy.types.INFO_MT_file_export.append(menu_func)
     
+    
+# ----- NOTE: Custom xport64 icons coming in future update ---------------------------------------------------------                        
+    # global custom_icons
+    # custom_icons = bpy.utils.previews.new()
+    # #xport64_dir = bpy.props.StringProperty(subtype = "DIR_PATH")
+    # xport64_dir = os.path.dirname(__file__)
+    # print("Print directory %s" % xport64_dir)
+    # xport64_icon_dir = ("%s\icons" %(xport64_dir))
+    # print("Print icons directory %s" % xport64_icon_dir)
+    # loadIcon = ("%s\%s" %(xport64_icon_dir, "xport64-logo-icons32x32.png"))
+    # xport64_icons.load("xport64_Logo", loadIcon, 'IMAGE')
+# ----- NOTE: Custom xport64 icons coming in future update ---------------------------------------------------------                    
+
+    
     for cls in externclasses:
         bpy.utils.register_class(cls)        
     bpy.types.Scene.scene_props = bpy.props.PointerProperty(type = SceneProp_Xport64)
-    bpy.types.Scene.scene_lights = bpy.props.PointerProperty(type = LightProp_Xport64)
+    bpy.types.Scene.scene_lights = bpy.props.PointerProperty(type = LightProp_Xport64)    
+    bpy.types.Scene.image_name = bpy.props.StringProperty(name = '', subtype = "FILE_PATH")
     bpy.types.Object.obj_props = bpy.props.PointerProperty(type = ObjectProp_Xport64)
     bpy.types.Object.obj_lights = bpy.props.PointerProperty(type = LightProp_Xport64)
     bpy.types.Material.mat_props = bpy.props.PointerProperty(type = MaterialProp_Xport64)
-    bpy.types.Material.mat_lights = bpy.props.PointerProperty(type = LightProp_Xport64)
+    bpy.types.Material.mat_lights = bpy.props.PointerProperty(type = LightProp_Xport64)   
+    
+
   
       
 def unregister():
     bpy.utils.unregister_class(ExportN64DisplayList)
     bpy.types.INFO_MT_file_export.remove(menu_func)
 
+    # global xport64_icons
+    # bpy.utils.previews.remove(xport64_icons)
+    
     for cls in externclasses:
         bpy.utils.unregister_class(cls)
   
