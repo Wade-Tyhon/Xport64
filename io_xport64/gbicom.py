@@ -1,15 +1,15 @@
 bl_info = {
-  "name": "Xport64 v1.0",
+  "name": "export",
   "description": "Export to N64 Display List",
   "author": "WadeMalone",
   "version": (1, 0, 1),
-  "blender": (2, 76, 0),
+  "blender": (2, 70, 0),
   "warning": "",
-  "location": "File > Import-Export",
+  "location": "View3D > Tool",
   "wiki_url": "",
   "tracker_url": "",
   "support": "COMMUNITY",
-  "category": "Import-Export" }  
+  "category": "N64 Model Editing" }
 
 import bpy
 import string
@@ -27,6 +27,22 @@ PRE_BUILT_SETTINGS = {
         "LoadTLUT" : "   %sDPLoadTLUT_pal16(  %s 0, %s %s\n",
         "UsageTip" : "//>-- SHOWTIPS -- Place Holder... \n",
         "Debug" : "//>-- DEBUG -- Place Holder... \n",
+    },
+
+#NOTE ----- TEXTURE_16B_RGBA_UNLIT - For use with "emissive" objects that are NOT shaded by "real time" or "baked" vertex color lighting    
+    "TEXTURE_4B_UNLIT" : {
+        "PipeSync" : "   %sDPPipeSync( %s %s\n",
+        "TileSync" : "   %sDPTileSync(%s %s\n",
+        "CycleType" : "   %sDPSetCycleType( %s G_CYC_2CYCLE %s\n",
+        "ClearGeometryMode" : "   %sSPClearGeometryMode( %s 0xFFFFFFFF %s\n",
+        "SetGeometryMode" : "   %sSPSetGeometryMode( %s  G_ZBUFFER | G_SHADE | G_FOG | G_SHADING_SMOOTH | G_CULL_BACK  %s\n",        
+        "Texture" : "   %sSPTexture(  %s 0xffff, 0xffff, 0, G_TX_RENDERTILE, G_ON  %s\n",        
+        "TextureLUT" : "   %sDPSetTextureLUT(  %s G_TT_RGBA16 %s\n",
+        "SetCombineLERP" : "   %sDPSetCombineLERP(  %s	TEXEL0, 0, TEXEL0, 0, TEXEL0, 0, 1, 0, 0, 0, 0, COMBINED, 0, 0, 0, COMBINED %s\n",
+        "SetRenderMode" : "   %sDPSetRenderMode(  %s G_RM_FOG_SHADE_A, G_RM_AA_ZB_OPA_SURF2  %s\n",
+        "LoadTextureBlock_4b" : "   %sDPLoadTextureBlock_4b(  %s %s,	G_IM_FMT_CI,	%i, %i,	0, %s,%s, %s,%s, %s,%s %s\n",
+        "SetTextureFilter" : "   %sDPSetTextureFilter(  %s %s %s\n",
+        "LoadTLUT" : "   %sDPLoadTLUT_pal16(  %s 0, %s %s\n",
     },
     
     "ALPHA_TEXTURE_4B" : {
@@ -69,7 +85,7 @@ PRE_BUILT_SETTINGS = {
         "Texture" : "   %sSPTexture(  %s 0xffff, 0xffff, 0, G_TX_RENDERTILE, G_ON  %s\n",        
         "TextureLUT" : "   %sDPSetTextureLUT(  %s G_TT_NONE %s\n",
         "SetCombineLERP" : "   %sDPSetCombineLERP(  %s	TEXEL0, 0, TEXEL0, 0, TEXEL0, 0, 1, 0, 0, 0, 0, COMBINED, 0, 0, 0, COMBINED %s\n",
-        "SetRenderMode" : "   %sDPSetRenderMode(  %s G_RM_FOG_SHADE_A, G_RM_AA_ZB_OPA_SURF2  %s\n", #AA should be turned on for transparent textures
+        "SetRenderMode" : "   %sDPSetRenderMode(  %s G_RM_FOG_SHADE_A, G_RM_AA_ZB_OPA_SURF2  %s\n", 
         "LoadTextureBlock" : "   %sDPLoadTextureBlock(  %s %s,	G_IM_FMT_RGBA, G_IM_SIZ_16b,	%i, %i,	0, %s,%s, %s,%s, %s,%s %s\n",
         "SetTextureFilter" : "   %sDPSetTextureFilter(  %s %s %s\n",
         "UsageTip" : "//>-- SHOWTIPS -- Place Holder... \n",

@@ -1,16 +1,16 @@
 bl_info = {
-  "name": "Xport64 v1.0",
+  "name": "export",
   "description": "Export to N64 Display List",
   "author": "WadeMalone",
   "version": (1, 0, 1),
-  "blender": (2, 76, 0),
+  "blender": (2, 70, 0),
   "warning": "",
-  "location": "File > Import-Export",
+  "location": "View3D > Tool",
   "wiki_url": "",
   "tracker_url": "",
   "support": "COMMUNITY",
-  "category": "Import-Export" }   
-  
+  "category": "N64 Model Editing" }
+
 import bpy
 import os
 import random
@@ -26,23 +26,29 @@ from .gbicom import TEXTURE_4B_TLUT, PRE_BUILT_SETTINGS, GBI_Xport64
 #from __init__ import roundtoquarter, isclose, roundtohalf
 
 #---------------------------------------------------------------------------------------------------------
-#-----------------------------------------MOST RECENT UPDATES---------------------------------------------
-#---------------------------------------------------------------------------------------------------------
-#UPDATE 11/4/2021:  Several error checks added to __init__.py export.py and panel.py and fixes in case user 
-#                   attempts to export an object with no material or uses a texture material but does not 
-#                   include an Image Texture node / image
+#IN PROGRESS 10/15/2021:
+#
+#PRIORITY    
+#       - Support for custom external display lists for materials and objects
+#           - Object level display lists is complete
+#       - Continue improving UI for ease of use
 #---------------------------------------------------------------------------------------------------------
 #---------------------------------------------------------------------------------------------------------
 #TO DO NOTES 10/19/2021:        
 #       - Improve ease of use by adding debug material and textures to model with a single button click on setup    
-#       - Work on the fully customizable GBI commands
-#       - Print most debug messages in the debug console
-#            - To open python console to view debug messages, go to Window -> Toggle System Console
-#            - See if it's possible to open the system console from script when user toggles debug mode...           
-#       - Support negative U/V (S/T) values when converting from int to hexidecimal          
+#       - Work on the fully customizable GBI commands                               
+#       - Add DEBUG message for object and scene lights
+#       
 #---------------------------------------------------------------------------------------------------------
 #---------------------------------------------------------------------------------------------------------
-#RECENT UPDATES 10/19/2021: 
+#RECENT UPDATES (Last update 11/22/2021): 
+#       - Support negative U/V (S/T) values when converting from int to hexidecimal   
+#           - Begins on 1425 and uses checknegativehex to check and convert values and store them in S_Coordinates and T_Coordinate
+#       - Added DEBUG message for material light
+#       - Fixed collision export bug caused by old code not being completely scrubbed. In previous build, some faces in a collision object would not export if UV colors or texture were different on some faces.
+#       - Added new object rig options to use default Xport64 rig or to include your own command
+#       - Updated Scene/Obj/Mat light to optionally enter your values manually
+#       - Fixed error where obj light name was triggering a duplicate light name for material lights, unusedLight variable is now re-set with every material check. 
 #       - Added some guidance to plug-in on what is needed to properly use this plug-in
 #       - Support for Scene, Object and Material lights
 #       - Some debug messages have been moved to print
@@ -69,7 +75,7 @@ class Obj_Properties_Xport64(bpy.types.PropertyGroup):
     totalUVValues = [[[]]] #This stores the UV values actually used in the VTXlist. It is used for comparison in the polylist
 
 class exportTest(bpy.types.PropertyGroup):
-    bl_label = "Export Class"    
+    bl_label = "Export Class"
     
 #   **********************************************************************************************************************************************
 # 1 ***************************************************************** EXPORT VERT ****************************************************************
@@ -209,7 +215,7 @@ class VTX_Xport64(bpy.types.Operator):
 #                   If object is tagged as a collision object, begin collider object structure.
 #---------------------------------------------------------------------------------------------------------     
           if obj.obj_props.sort_Method == "COLLISION":      
-            o.write("MeshCollider %s_MeshVtx_%i [] = {\n" % (name, f))       
+            o.write("MeshCollider %s_MColVtx_%i [] = {\n" % (name, f))       
           else:
             o.write("Vtx %s_VertList_%i [] = {\n" % (name, f))
             
@@ -218,7 +224,7 @@ class VTX_Xport64(bpy.types.Operator):
 #---------------------------------------------------------------------------------------------------------                  
           if sceneprops.create_header_file == True: #NOTE ----- Save these commands in a string for later use in .h file for defintions and declarations:          
               if obj.obj_props.sort_Method == "COLLISION":      
-                self.definitionsFile[self.commandCount] = ("extern MeshCollider %s_MeshVtx_%i [];\n" % (name, f)) 
+                self.definitionsFile[self.commandCount] = ("extern MeshCollider %s_MColVtx_%i [];\n" % (name, f)) 
               else:
                 self.definitionsFile[self.commandCount] = ("extern Vtx %s_VertList_%i [];\n" % (name, f)) 
                 
@@ -326,8 +332,9 @@ class VTX_Xport64(bpy.types.Operator):
 
                   else:
                     colorIndex += 1           
-                if check == 0:          
-                  o.write("//Found a new color! Color Index: %i     Vert %i:  %i, %i, %i \n" % (colorIndex, vertCheck, vcol[0]*255, vcol[1]*255, vcol[2]*255)) #Found a new color to add to index
+                if check == 0:
+                  if DEBUG == True:
+                    o.write("//Found a new color! Color Index: %i     Vert %i:  %i, %i, %i \n" % (colorIndex, vertCheck, vcol[0]*255, vcol[1]*255, vcol[2]*255)) #Found a new color to add to index
                   allPrimColors[colorIndex].append(vcol[0]*255)
                   allPrimColors[colorIndex].append(vcol[1]*255)
                   allPrimColors[colorIndex].append(vcol[2]*255)
@@ -417,10 +424,14 @@ class VTX_Xport64(bpy.types.Operator):
 #EXPORTER_NOTES:    Print the VTX data into a format usable by the N64. For compatibility with ModifyVertex, UV Coords are stored as hex.
 #                   Vertex data can be exported with vertex colors for baked lighting, normals for real time lighting, or a custom normals struct for collisions
 #---------------------------------------------------------------------------------------------------------                      
+
+                      S_Coordinate = checknegativehex(int(self.uvValue[objCounter][uvCount][0]*matTextureSize[0]))
+                      T_Coordinate = checknegativehex(int(self.uvValue[objCounter][uvCount][1]*matTextureSize[1]))
+
                       if obj.obj_props.sort_Method == "VTX COLOR":
                           o.write("   { %.2f, %.2f, %.2f, %i, 0x%0004x, 0x%0004x, %i, %i, %i, %i}, \n" 
                             % (coord.x*self.scale, coord.y*self.scale, coord.z*self.scale, 1,                               
-                               int(self.uvValue[objCounter][uvCount][0]*matTextureSize[0]), int(self.uvValue[objCounter][uvCount][1]*matTextureSize[1]), 
+                               S_Coordinate, T_Coordinate, 
                                self.allVertexColors[objCounter][uvCount][0], self.allVertexColors[objCounter][uvCount][1], self.allVertexColors[objCounter][uvCount][2], self.allVertexColors[objCounter][uvCount][3]))
                       
                       elif obj.obj_props.sort_Method == "COLLISION":
@@ -431,7 +442,7 @@ class VTX_Xport64(bpy.types.Operator):
                       else:
                         o.write("   { %.2f, %.2f, %.2f, %i, 0x%0004x, 0x%0004x, %i, %i, %i, %i},  \n" 
                           % (coord.x*self.scale, coord.y*self.scale, coord.z*self.scale, 1,                             
-                             int(self.uvValue[objCounter][uvCount][0]*matTextureSize[0]), int(self.uvValue[objCounter][uvCount][1]*matTextureSize[1]), 
+                             S_Coordinate, T_Coordinate, 
                              obj.data.vertices[(currentActiveVertex[vertCheck])].normal.x*127, obj.data.vertices[(currentActiveVertex[vertCheck])].normal.y*127, obj.data.vertices[(currentActiveVertex[vertCheck])].normal.z*127, 255))     
   
                       index+=1
@@ -540,7 +551,11 @@ class Poly_Xport64(bpy.types.Operator):
         DL_name_setting = ""
         DL_name = ""
         DL_end_setting = ""
-        VertList_setting = ""       
+        VertList_setting = ""
+        animFrame_setting = "" #include 
+        
+        incAnimFrame = obj.obj_props.pass_animframe
+        
         
         if obj.obj_props.static_DL == False:
             DL_start_setting = dynamic_DL_start            
@@ -549,12 +564,22 @@ class Poly_Xport64(bpy.types.Operator):
             DL_name_setting += ", "             
             DL_end_setting = dynamic_DL_end
             VertList_setting = dynamic_VertList
+#NOTE ----- In a dynamic display list, pass an optional parameter for simple animations
+            incAnimFrame = obj.obj_props.pass_animframe
+            if incAnimFrame == True:
+                animFrame_setting = "u8 animFrame"
+            else:
+                animFrame_setting = ""
             
         elif obj.obj_props.static_DL == True:
             DL_start_setting = static_DL_start
             DL_name_setting = static_DL_name
             DL_end_setting = static_DL_end
             VertList_setting = static_VertList #default... if there are multiple frames or states, this will need to update
+#NOTE ----- Cannot pass animation frame to a static display list so set to false 
+            incAnimFrame = False 
+            animFrame_setting = ""
+            
 #END------------------------------------------Static/Dynamic Display List Settings------------------------------------------- 
         #testString = obj.obj_props.sort_Method
         
@@ -582,7 +607,12 @@ class Poly_Xport64(bpy.types.Operator):
         name = self.clean_name(obj.name)
         vert = obj.data.vertices
         poly = obj.data.polygons
-        uv = obj.data.uv_layers.active      
+        uv = obj.data.uv_layers.active
+
+    #RIG VARIABLES
+    
+        #rigName = obj.obj_props.rig_Template_Name
+        #rigJoint = obj.obj_props.joint_Template_Name
 
 #---------------------------------------------------------------------------------------------------------
 #EXPORTER_NOTES:    obj.obj_props.anim_Method == "OBJ VARIABLES" checks for whether the user has chosen the Pos, Rot, Scl option for animation export
@@ -615,31 +645,55 @@ class Poly_Xport64(bpy.types.Operator):
 #---------------------------------------------------------------------------------------------------------
 #TO_DO_NOTE:        Part of the "OBJ VARIABLES" is commented out as this is version. Right now user must use their own method for rigging.
 #                   However, a simple rigging template is going to be available with the next version of the exporter and demo game.
+#                       - Include more options for a "rig" name / structure
+#                       - Finish setting up rig assignment section of *_UpdateFrame
 #---------------------------------------------------------------------------------------------------------  
             
 #START------------------------------------------WIP Animation Rig Settings-------------------------------------------
-            # o.write("void %s_animation()\n { \n" % name)        
-            # o.write("   tempObjVectorPos = %s_anim[animFrame].pos;\n" % name)
-            # o.write("   tempObjVectorRot = %s_anim[animFrame].rot;\n" % name)  
-            # o.write("   tempObjVectorScl = %s_anim[animFrame].scl;\n\n" % name)         
-            # o.write("   tempObjVectorPos = RotateAround(tempObjVectorPos, playerAvatar.rigidBody.centerMass, playerAvatar.obj.rot.z );\n")
-            # o.write("       //NOTE: Assign values to your rig here. For instance: \n")
-            # o.write("       //SetVector3(&playerAvatar.animRig.joint.armR[0].pos, tempObjVectorPos.x,tempObjVectorPos.y,tempObjVectorPos.z);\n")            
-            # o.write("\n } \n")
+            
+            if obj.obj_props.update_frame_function == True:            
+                o.write("void %s_UpdateFrame( %s )\n { \n" % (name, animFrame_setting))        
+                o.write("   %s_TempVectorPos = %s_anim[animFrame].pos;\n" % (scene.scene_props.current_scene_id, name))
+                o.write("   %s_TempVectorRot = %s_anim[animFrame].rot;\n" % (scene.scene_props.current_scene_id, name))  
+                o.write("   %s_TempVectorScl = %s_anim[animFrame].scl;\n\n" % (scene.scene_props.current_scene_id, name))   
+                
+                o.write("   %s_TempVectorPos = RotateAround(%s_TempVectorPos, playerAvatar.rigidBody.centerMass, playerAvatar.obj.rot.z );\n" % (scene.scene_props.current_scene_id, scene.scene_props.current_scene_id))
+
+                if obj.obj_props.rig_Method == "XPORT64 RIG":
+                #NOTE ----- If using the default Xport64 rig:
+                    o.write("   SetVector3(&%s.animRig.joint.%s.pos, %s_TempVectorPos.x,%s_TempVectorPos.y,%s_TempVectorPos.z);\n" % (obj.obj_props.rig_Template_Name, obj.obj_props.joint_Template_Name, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id))
+                    o.write("   SetVector3(&%s.animRig.joint.%s.rot, %s_TempVectorRot.x,%s_TempVectorRot.y,%s_TempVectorRot.z);\n" % (obj.obj_props.rig_Template_Name, obj.obj_props.joint_Template_Name, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id))
+                    o.write("   SetVector3(&%s.animRig.joint.%s.scl, %s_TempVectorScl.x,%s_TempVectorScl.y,%s_TempVectorScl.z);\n" % (obj.obj_props.rig_Template_Name, obj.obj_props.joint_Template_Name, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id))
+                    
+                    
+                    #o.write("       //NOTE: Assign values to your rig here. For instance: \n")
+                    
+                elif obj.obj_props.rig_Method == "CUSTOM FUNCTION":
+                    o.write("       //NOTE: You're using a custom rig command: \n")
+                    o.write("       %s \n" % obj.obj_props.custom_Rig_Function)
+                
+                #o.write("       //SetVector3(&playerAvatar.animRig.joint.armR[0].pos, tempObjVectorPos.x,tempObjVectorPos.y,tempObjVectorPos.z);\n")            
+                o.write("\n } \n")
+                
+                if sceneprops.create_header_file == True: #NOTE ----- If user selects to export definitions / declarations to a header file: 
+                    self.definitionsFile[self.commandCount] = ("extern void %s_UpdateFrame( %s );\n" % (name, animFrame_setting))                
+                    self.definitionsFile.append([])
+                    self.commandCount +=1 
+                
 #END--------------------------------------------WIP Animation Rig Settings--------------------------------------------
             
-            if SHOWTIPS == True or DEBUG == True:
-                o.write("//>-- ALERT ------------------------------------------- RigAnimation includes objects pos, rot, and scl each frame. Rig template is coming in next version. --<\n")
-                o.write("//>-- ALERT ------------------------------------------- Right, now user must provide their own method for rigging and animating in their application. --<\n\n")
+            #if SHOWTIPS == True or DEBUG == True:
+                #o.write("//>-- ALERT ------------------------------------------- RigAnimation includes objects pos, rot, and scl each frame. Rig template is coming in next version. --<\n")
+                #o.write("//>-- ALERT ------------------------------------------- Right, now user must provide their own method for rigging and animating in their application. --<\n\n")
                 
         if obj.obj_props.sort_Method == "COLLISION" :
-            o.write("MeshColliderTri %s_MeshTri[] = \n { \n" % (name))
+            o.write("MeshColliderTri %s_MColTri[] = \n { \n" % (name))
             
 #START------------------------------------------Begin structure of polylist function (display list commands)-------------------------------------------         
         elif obj.obj_props.static_DL != True:
-            o.write("void %s_PolyList(u8 animFrame){ \n\n   Vtx *%s_VTXPointer = &%s_VertList_%i[0]; \n\n" % (name, name, name, scene.frame_start))             
+            o.write("void %s_PolyList( %s ){ \n\n   Vtx *%s_VTXPointer = &%s_VertList_%i[0]; \n\n" % (name, animFrame_setting, name, name, scene.frame_start))             
             if sceneprops.create_header_file == True: #NOTE ----- If user selects to export definitions / declarations to a header file: 
-                self.definitionsFile[self.commandCount] = ("extern void %s_PolyList(u8 animFrame);\n" % name)                
+                self.definitionsFile[self.commandCount] = ("extern void %s_PolyList( %s );\n" % (name, animFrame_setting))                
                 self.definitionsFile.append([])
                 self.commandCount +=1 
 #START------------------------------------------Begin structure of polylist function (display list commands)-------------------------------------------  
@@ -650,7 +704,8 @@ class Poly_Xport64(bpy.types.Operator):
 #                   animation that is given to it. It is up to the application to provide the correct frame to the struct for animation.
 #---------------------------------------------------------------------------------------------------------        
 #START-------------------------------------------------------SWITCH STATEMENT------------------------------------------------------------------
-        if obj.obj_props.anim_Method == "VTX DL" and obj.obj_props.static_DL == False and obj.obj_props.sort_Method != "COLLISION":
+        
+        if obj.obj_props.anim_Method == "VTX DL" and obj.obj_props.static_DL == False and incAnimFrame == True and obj.obj_props.sort_Method != "COLLISION":
             o.write("   switch(animFrame)\n     {\n")        
         
         modifiedUVValues = [[[]]] #make note of an update to a UV value using modifyVertex command. Reset 
@@ -660,17 +715,17 @@ class Poly_Xport64(bpy.types.Operator):
           if obj.obj_props.static_DL == False and obj.obj_props.sort_Method != "COLLISION":          
               if obj.obj_props.anim_Method == "OBJ VARIABLES" or obj.obj_props.anim_Method == "VTX DL":       
                 scene.frame_set(f)                
-                if obj.obj_props.anim_Method == "VTX DL":
+                if obj.obj_props.anim_Method == "VTX DL"  and incAnimFrame == True:
                     o.write("     case %i:\n" % f)
               else:
                 f = frame_current      
              
-              if obj.obj_props.anim_Method == "VTX DL":
+              if obj.obj_props.anim_Method == "VTX DL"  and incAnimFrame == True:
                 o.write("       %s_VTXPointer = &%s_VertList_%i[0]; \n        break;\n" % (name, name, f))
               if obj.obj_props.anim_Method == "NO ANIM":
                 break           
 
-        if obj.obj_props.anim_Method == "VTX DL" and obj.obj_props.static_DL == False and obj.obj_props.sort_Method != "COLLISION":
+        if obj.obj_props.anim_Method == "VTX DL" and obj.obj_props.static_DL == False  and incAnimFrame == True and obj.obj_props.sort_Method != "COLLISION":
             o.write("   }\n\n\n ")
 #END-------------------------------------------------------SWITCH STATEMENT------------------------------------------------------------------
     
@@ -901,11 +956,13 @@ class Poly_Xport64(bpy.types.Operator):
               
               
               if obj.obj_props.sort_Method == "COLLISION":
-                  while primColorCheck < primColorCount:
-                    
+              
+                  colFaceCount = 0;
+              
+                  while primColorCheck < primColorCount:                    
                     modifiedUVValues = copy.deepcopy(self.usedUVValues) #reset modified UV values since there is a new gSPVertex call
                     # if self.debugCheck == True:
-                        # o.write("//MODIFIED UV VALUES RESET \n")          
+                        # o.write("//MODIFIED UV VALUES RESET \n")                    
                     
                     correctMaterial = False
                     delayVertexCall = False
@@ -924,28 +981,31 @@ class Poly_Xport64(bpy.types.Operator):
                       tempB = i*3+1
                       tempC = i*3+2 
                       
-                      if vcol[0]*255 == allPrimColors[primColorCheck][0] and vcol[1]*255 == allPrimColors[primColorCheck][1] and vcol[2]*255 == allPrimColors[primColorCheck][2]:  
-                        correctMaterial = True
-                        # if self.debugCheck == True:
-                          # o.write("//COLLISION TYPE - Set collision type by color (Need to set this up later) \n")
+                      if DEBUG == True: #DEBUG CHECK VALUES:--- 
+                        o.write("//Test Collision value: %d \n" % i)
+                      
+                      # if vcol[0]*255 == allPrimColors[primColorCheck][0] and vcol[1]*255 == allPrimColors[primColorCheck][1] and vcol[2]*255 == allPrimColors[primColorCheck][2]:  
+                        # correctMaterial = True
+                        # # if self.debugCheck == True:
+                          # # o.write("//COLLISION TYPE - Set collision type by color (Need to set this up later) \n")
                             
-                        if vcol[0]*255 == activePrimativeColors[0] and vcol[1]*255 == activePrimativeColors[1] and vcol[2]*255 == activePrimativeColors[2]:
-                          if DEBUG == True: #DEBUG CHECK VALUES:--- 
-                            o.write("//Color Already Set \n")
-                        else:  #If current color is different than existing primitive color, assign new colors to active colors 
-                          activePrimativeColors[0] = vcol[0]*255 
-                          activePrimativeColors[1] = vcol[1]*255
-                          activePrimativeColors[2] = vcol[2]*255
-                          o.write("//COLLISION TYPE - Set collision type by color: collision type %i \n" %(primColorCount))
+                        # if vcol[0]*255 == activePrimativeColors[0] and vcol[1]*255 == activePrimativeColors[1] and vcol[2]*255 == activePrimativeColors[2]:
+                          # if DEBUG == True: #DEBUG CHECK VALUES:--- 
+                            # o.write("//Color Already Set \n")
+                        # else:  #If current color is different than existing primitive color, assign new colors to active colors 
+                          # activePrimativeColors[0] = vcol[0]*255 
+                          # activePrimativeColors[1] = vcol[1]*255
+                          # activePrimativeColors[2] = vcol[2]*255
+                          # o.write("//COLLISION TYPE - Set collision type by color: collision type %i \n" %(primColorCount))
                         
-                      else:
-                        correctMaterial = False #If sorting by material slot
-                        # if self.debugCheck == True:
-                          # o.write("//MATERIAL SKIP \n") 
+                      # else:
+                        # correctMaterial = False #If sorting by material slot
+                        # # if self.debugCheck == True:
+                          # # o.write("//MATERIAL SKIP \n") 
                     
                         
-                      if correctMaterial == True or correctMaterial == False: 
-                        if redirectValue[tempA] > offset+loadlim or redirectValue[tempB] > offset+loadlim or redirectValue[tempC] > offset+loadlim:
+                      # if correctMaterial == True or correctMaterial == False: 
+                      if redirectValue[tempA] > offset+loadlim or redirectValue[tempB] > offset+loadlim or redirectValue[tempC] > offset+loadlim:
                           offset += loadlim 
                           count = 0   
                           while redirectValue[tempA] > offset+loadlim or redirectValue[tempB] > offset+loadlim or redirectValue[tempC] > offset+loadlim:         
@@ -968,7 +1028,7 @@ class Poly_Xport64(bpy.types.Operator):
                         
                           modifiedUVValues = copy.deepcopy(self.usedUVValues) #reset modified UV values since there is a new gSPVertex call   
                           
-                        if redirectValue[tempA]-offset < 0 or redirectValue[tempB]-offset < 0 or redirectValue[tempC]-offset < 0:
+                      if redirectValue[tempA]-offset < 0 or redirectValue[tempB]-offset < 0 or redirectValue[tempC]-offset < 0:
                           numCheck = redirectValue[tempA]-offset
                           if redirectValue[tempB]-offset < numCheck:
                             numCheck = redirectValue[tempB]-offset
@@ -980,15 +1040,15 @@ class Poly_Xport64(bpy.types.Operator):
                           delayVertexCall = True #if the next polygon has the correct material and needs an offset... 
 
                           modifiedUVValues = copy.deepcopy(self.usedUVValues) #reset modified UV values since there is a new gSPVertex call                            
-                      if correctMaterial == True: #Check whether looking for sort by material or sort by primitive color                
+                      #if correctMaterial == True: #Check whether looking for sort by material or sort by primitive color                
                         
-                        if delayVertexCall == True:                    
-                            delayVertexCall = False                     
+                      if delayVertexCall == True:                    
+                          delayVertexCall = False                     
 
-                        o.write("   {%d, %d, %d}, \n" % (redirectValue[tempA], redirectValue[tempB], redirectValue[tempC])) 
+                      o.write("   {%d, %d, %d}, \n" % (redirectValue[tempA], redirectValue[tempB], redirectValue[tempC])) 
                       
                       i += 1        
-                        
+                    colFaceCount = i    
                     i = 0
                     offset = 0
                     count = 0
@@ -996,9 +1056,18 @@ class Poly_Xport64(bpy.types.Operator):
                     primColorCheck += 1
                     i = 0
                     offset = 0
-                    offsetAdjust = 0  
+                    offsetAdjust = 0
 
-              
+                  o.write("}; \n\n")
+                  o.write("MeshColliderObj %s_MColObj[] = { \n" % (name))                  
+                  o.write("   %s_MColVtx_%i, \n"% (name, f))
+                  o.write("   %s_MColTri, \n"% (name))
+                  o.write("   %i, \n}; \n"% (colFaceCount))
+                #s_MeshVtx
+                #s_MColTri
+                #colFaceCount
+
+             # o.write("MeshColliderTri %s_MColTri[] = \n { \n" % (name))
 
                     
 #NOTE:NewMaterials-----------------------------------------
@@ -1013,7 +1082,7 @@ class Poly_Xport64(bpy.types.Operator):
                 delayVertexCall = False
                 materialCounter = 0
                 objMaterials = obj.data.materials
-                matLights = objMaterials[materialCounter].mat_lights
+                matLights = objMaterials[materialCounter].mat_lights                
                 objLights = obj.obj_lights
                 scnLights = scene.scene_lights
                 
@@ -1036,8 +1105,8 @@ class Poly_Xport64(bpy.types.Operator):
 
                 
 #NOTE: ---- If both an Object light and Scene light are defined, the Object light will be printed in place of the scene light ----   
-                if scnLights.custom_lights == True and scnLights.qty_lights > 0:                
-                    if objLights.custom_lights == True and objLights.qty_lights > 0:
+                if scnLights.custom_lights == True:                
+                    if objLights.custom_lights == True:
                         #o.write("\n//Print OBJECT light... \n")           
                         o.write("// Set Object Light: \n")                        
                         o.write("   %sSPSetLights%i( %s %s %s\n" % (DL_start_setting, obj.obj_lights.qty_lights, DL_name_setting, obj.obj_lights.light_struct_name, DL_end_setting))                       
@@ -1046,7 +1115,7 @@ class Poly_Xport64(bpy.types.Operator):
                         o.write("// Set Scene Light: \n")
                         o.write("   %sSPSetLights%i( %s %s %s\n" % (DL_start_setting, scnLights.qty_lights, DL_name_setting, scnLights.light_struct_name, DL_end_setting))
                         
-                elif objLights.custom_lights == True and objLights.qty_lights > 0:
+                elif objLights.custom_lights == True:
                     #o.write("\n//Print OBJECT light... \n")
                     o.write("// Set Object Light: \n")
                     o.write("   %sSPSetLights%i( %s %s %s\n" % (DL_start_setting, objLights.qty_lights, DL_name_setting, objLights.light_struct_name, DL_end_setting))                    
@@ -1131,7 +1200,7 @@ class Poly_Xport64(bpy.types.Operator):
                         if face.material_index == materialCounter:
 
                             waitingToPrint[gSP2TriangleCheck] = True
-                           
+                            matLights = objMaterials[materialCounter].mat_lights #update material light to current material
                             
                             if(startMaterial == False): 
                                 startMaterial = True                
@@ -1278,10 +1347,12 @@ class Poly_Xport64(bpy.types.Operator):
                                     
                                     o.write("\n")
 
-                                    
-                                if matLights.custom_lights == True and matLights.qty_lights > 0:
-                                    #o.write("\n//Print MATERIAL light... \n")
-                                    o.write("// Set Material Light: \n")
+                                if DEBUG == True: 
+                                    o.write("\n//Checking for MATERIAL light... %s \n" % matLights.custom_lights)    
+                                if matLights.custom_lights == True:
+                                
+                                    if DEBUG == True:
+                                        o.write("// Set Material Light: \n")
                                     o.write("   %sSPSetLights%i( %s %s %s\n" % (DL_start_setting, matLights.qty_lights, DL_name_setting, matLights.light_struct_name, DL_end_setting))                                    
                                
                             for vert, loop in zip(face.vertices, face.loop_indices):
@@ -1350,26 +1421,62 @@ class Poly_Xport64(bpy.types.Operator):
     #NOTE: If user has set "Export ST and Texture Commands" (obj_props.gbi_com_textures) to false then no ModifyVertex commands will be used. 
     #This is useful if rendering the object with primitive colors. It will save texture commands, UV commands, and allow for more gSP2Triangles commands
     #matTextureSize[0]textureSize
-                            if objExportTextureCoords == True:
+                            if objExportTextureCoords == True:                            
+                                S_Coordinate = 0
+                                T_Coordinate = 0
                                 if redirectValue[tempA]-offset >= 0 and redirectValue[tempB]-offset >= 0 and redirectValue[tempC]-offset >= 0:
                                     modify = False
                                     if roundtoquarter(self.uvValue[objCounter][tempA][0]) != roundtoquarter(modifiedUVValues[objCounter][redirectValue[tempA]][0]) or roundtoquarter(self.uvValue[objCounter][tempA][1]) != roundtoquarter(modifiedUVValues[objCounter][redirectValue[tempA]][1]):  
                                         modify = True 
-                                        modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting,redirectValue[tempA]-offset, int((self.uvValue[objCounter][tempA][0])*textureSize[0]), int((self.uvValue[objCounter][tempA][1])*textureSize[1]), DL_end_setting, self.uvValue[objCounter][tempA][0], self.uvValue[objCounter][tempA][1]))
+                                        
+                                        #NOTE ----- Check if either the S or T coordinate is a negative value and if so, convert this to a format that the N64 can understand 
+                                        #S_Coordinate = int((self.uvValue[objCounter][tempA][0])*textureSize[0])
+                                        #T_Coordinate = int((self.uvValue[objCounter][tempA][1])*textureSize[1])       
+                                        
+                                        # S_Coordinate = checknegativehex(S_Coordinate)
+                                        # T_Coordinate = checknegativehex(T_Coordinate)
+                                        S_Coordinate = checknegativehex(int((self.uvValue[objCounter][tempA][0])*textureSize[0]))
+                                        T_Coordinate = checknegativehex(int((self.uvValue[objCounter][tempA][1])*textureSize[1]))
+                                        
+                                        
+                                        # if S_Coordinate < 0:
+                                            # o.write("\n  //NEGATIVE VALUE: 0x%0004x \n" % S_Coordinate )
+                                            # S_Coordinate = (65535 + S_Coordinate)
+                                            # o.write("\n  //Converting to NEGATIVE Hex Value: 0x%0004x \n" % S_Coordinate )                                            
+                                        # if T_Coordinate < 0:
+                                            # o.write("\n  //NEGATIVE VALUE: 0x%0004x \n" % T_Coordinate )
+                                            # S_Coordinate = (65535 + T_Coordinate)
+                                            # o.write("\n  //Converting to NEGATIVE Hex Value: 0x%0004x \n" % T_Coordinate )
+                                        
+                                        
+                                        
+                                        modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting,redirectValue[tempA]-offset, S_Coordinate, T_Coordinate, DL_end_setting, self.uvValue[objCounter][tempA][0], self.uvValue[objCounter][tempA][1]))
+                                        #modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting,redirectValue[tempA]-offset, int((self.uvValue[objCounter][tempA][0])*textureSize[0]), int((self.uvValue[objCounter][tempA][1])*textureSize[1]), DL_end_setting, self.uvValue[objCounter][tempA][0], self.uvValue[objCounter][tempA][1]))
+
                                         modifiedUVValues[objCounter][redirectValue[tempA]][0] = self.uvValue[objCounter][tempA][0] #update modifiedUVValues 
                                         modifiedUVValues[objCounter][redirectValue[tempA]][1] = self.uvValue[objCounter][tempA][1]
                                         modifyVertexCompare[gSP2TriangleCheck].append(redirectValue[tempA]) #to see if both tri1 and tri2 are using and modifying the same vertex                                       
                                       
                                     if roundtoquarter(self.uvValue[objCounter][tempB][0]) != roundtoquarter(modifiedUVValues[objCounter][redirectValue[tempB]][0]) or roundtoquarter(self.uvValue[objCounter][tempB][1]) != roundtoquarter(modifiedUVValues[objCounter][redirectValue[tempB]][1]):    
                                         modify = True
-                                        modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting, redirectValue[tempB]-offset, int((self.uvValue[objCounter][tempB][0])*textureSize[0]), int((self.uvValue[objCounter][tempB][1])*textureSize[1]), DL_end_setting, self.uvValue[objCounter][tempB][0], self.uvValue[objCounter][tempB][1]))
+                                        
+                                        S_Coordinate = checknegativehex(int((self.uvValue[objCounter][tempB][0])*textureSize[0]))
+                                        T_Coordinate = checknegativehex(int((self.uvValue[objCounter][tempB][1])*textureSize[1]))
+                                        
+                                        modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting, redirectValue[tempB]-offset, S_Coordinate, T_Coordinate, DL_end_setting, self.uvValue[objCounter][tempB][0], self.uvValue[objCounter][tempB][1]))
+                                        #modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting, redirectValue[tempB]-offset, int((self.uvValue[objCounter][tempB][0])*textureSize[0]), int((self.uvValue[objCounter][tempB][1])*textureSize[1]), DL_end_setting, self.uvValue[objCounter][tempB][0], self.uvValue[objCounter][tempB][1]))
                                         modifiedUVValues[objCounter][redirectValue[tempB]][0] = self.uvValue[objCounter][tempB][0]
                                         modifiedUVValues[objCounter][redirectValue[tempB]][1] = self.uvValue[objCounter][tempB][1]
                                         modifyVertexCompare[gSP2TriangleCheck].append(redirectValue[tempB]) #to see if both tri1 and tri2 are using and modifying the same vertex
                                       
                                     if roundtoquarter(self.uvValue[objCounter][tempC][0]) != roundtoquarter(modifiedUVValues[objCounter][redirectValue[tempC]][0]) or roundtoquarter(self.uvValue[objCounter][tempC][1]) != roundtoquarter(modifiedUVValues[objCounter][redirectValue[tempC]][1]):  
                                         modify = True
-                                        modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting, redirectValue[tempC]-offset, int((self.uvValue[objCounter][tempC][0])*textureSize[0]), int((self.uvValue[objCounter][tempC][1])*textureSize[1]), DL_end_setting, self.uvValue[objCounter][tempC][0], self.uvValue[objCounter][tempC][1]))
+                                        
+                                        S_Coordinate = checknegativehex(int((self.uvValue[objCounter][tempC][0])*textureSize[0]))
+                                        T_Coordinate = checknegativehex(int((self.uvValue[objCounter][tempC][1])*textureSize[1]))
+                                        
+                                        modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting, redirectValue[tempC]-offset, S_Coordinate, T_Coordinate, DL_end_setting, self.uvValue[objCounter][tempC][0], self.uvValue[objCounter][tempC][1]))
+                                        #modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting, redirectValue[tempC]-offset, int((self.uvValue[objCounter][tempC][0])*textureSize[0]), int((self.uvValue[objCounter][tempC][1])*textureSize[1]), DL_end_setting, self.uvValue[objCounter][tempC][0], self.uvValue[objCounter][tempC][1]))
                                         modifiedUVValues[objCounter][redirectValue[tempC]][0] = self.uvValue[objCounter][tempC][0] 
                                         modifiedUVValues[objCounter][redirectValue[tempC]][1] = self.uvValue[objCounter][tempC][1]
                                         modifyVertexCompare[gSP2TriangleCheck].append(redirectValue[tempC]) #to see if both tri1 and tri2 are using and modifying the same vertex
@@ -1682,16 +1789,16 @@ class Poly_Xport64(bpy.types.Operator):
                     materialCounter += 1
                     
 #NOTE: ---- At the end of this material, reset the currently used light to be the object or scene light ----   
-                    if matLights.custom_lights == True and matLights.qty_lights > 0: 
-                        if scnLights.custom_lights == True and scnLights.qty_lights > 0:                
-                            if objLights.custom_lights == True and objLights.qty_lights > 0:
+                    if matLights.custom_lights == True: 
+                        if scnLights.custom_lights == True:                
+                            if objLights.custom_lights == True:
                                 o.write("// Set Object Light: \n")
                                 o.write("   %sSPSetLights%i( %s %s %s\n" % (DL_start_setting, obj.obj_lights.qty_lights, DL_name_setting, obj.obj_lights.light_struct_name, DL_end_setting))                       
                             else:
                                 o.write("// Set Scene Light: \n")
                                 o.write("   %sSPSetLights%i( %s %s %s\n" % (DL_start_setting, scnLights.qty_lights, DL_name_setting, scnLights.light_struct_name, DL_end_setting))
                                 
-                        elif objLights.custom_lights == True and objLights.qty_lights > 0:
+                        elif objLights.custom_lights == True:
                             o.write("// Set Object Light: \n")
                             o.write("   %sSPSetLights%i( %s %s %s\n" % (DL_start_setting, objLights.qty_lights, DL_name_setting, objLights.light_struct_name, DL_end_setting))
 
@@ -1717,13 +1824,13 @@ class Poly_Xport64(bpy.types.Operator):
                 if obj.obj_props.static_DL == True:
                     o.write("   %sSPEndDisplayList()\n " % DL_start_setting)
 
+              #if obj.obj_props.sort_Method == "COLLISION" or obj.obj_props.static_DL == True:
+                if obj.obj_props.static_DL == True:
+                  o.write("}; \n")
+                else:
+                  o.write("} \n")
+                
               exportPolyList = False
-
-              if obj.obj_props.sort_Method == "COLLISION" or obj.obj_props.static_DL == True:
-                o.write("}; \n")
-              else:
-                o.write("} \n")
-              
               if obj.obj_props.static_DL == False or obj.obj_props.anim_Method == "OBJ VARIABLES" or obj.obj_props.anim_Method == "NO ANIM": 
                 break
         
@@ -1750,33 +1857,40 @@ class Lights_Xport64(bpy.types.Operator):
         obj = bpy.context.object
         sceneprops = scene.scene_props
         scenelights = scene.scene_lights
-        amblight = scenelights.amb_light
+        amblight = scenelights.amb_light_int
         scnLightStruct = [[1.0,1.0,1.0]]
         
-        if scenelights.custom_lights == True and scenelights.qty_lights > 0:
+        if scenelights.custom_lights == True:
             #objsFileC.write("\n\n //----- PRINT SCN LIGHTS ----- \n")
 #NOTE: ---- If a s light is set, grab the ambient light color and the 1st directional light color/angle. ----   
 #           ambLight structure - [R,G,B] Color is from 0-255, ambient lights have no direction
 #           DirLight structure - [R,G,B,X,Y,Z] Color is from 0-255, angle is from -90 to 90 and currently assumes Z-up but this may be adjustable in the future
                     
-            scnLightStruct[0] = [scene.scene_lights.amb_light[0],scene.scene_lights.amb_light[1],scene.scene_lights.amb_light[2]]
-            scnLightStruct.append([])                        
-            scnLightStruct[1] = [scene.scene_lights.dir_lights[0],scene.scene_lights.dir_lights[1],scene.scene_lights.dir_lights[2], scene.scene_lights.light_dir[0],scene.scene_lights.light_dir[2],scene.scene_lights.light_dir[1]] 
+            scnLightStruct[0] = [scene.scene_lights.amb_light_int[0],scene.scene_lights.amb_light_int[1],scene.scene_lights.amb_light_int[2]]
             scnLightStruct.append([])
-            if scene.scene_lights.qty_lights >=2:
-                scnLightStruct[2] = [scene.scene_lights.dir_lights2[0],scene.scene_lights.dir_lights2[1],scene.scene_lights.dir_lights2[2], scene.scene_lights.light_dir2[0],scene.scene_lights.light_dir2[2],scene.scene_lights.light_dir2[1]]
+            
+            if scene.scene_lights.qty_lights == 0:
+                scnLightStruct[1] = [0,0,0,0,0,0] #If the user choses '0' directional lights, then the light and direction should also be set to 0
                 scnLightStruct.append([])
-                if scene.scene_lights.qty_lights ==3:
-                    scnLightStruct[3] = [scene.scene_lights.dir_lights3[0],scene.scene_lights.dir_lights3[1],scene.scene_lights.dir_lights3[2], scene.scene_lights.light_dir3[0],scene.scene_lights.light_dir3[2],scene.scene_lights.light_dir3[1]]
+
+            elif scene.scene_lights.qty_lights >=1:
+                scnLightStruct[1] = [scene.scene_lights.dir_lights_int[0],scene.scene_lights.dir_lights_int[1],scene.scene_lights.dir_lights_int[2], scene.scene_lights.light_dir_int[0],scene.scene_lights.light_dir_int[2],scene.scene_lights.light_dir_int[1]] 
+                scnLightStruct.append([])
+                if scene.scene_lights.qty_lights >=2:
+                    scnLightStruct[2] = [scene.scene_lights.dir_lights2_int[0],scene.scene_lights.dir_lights2_int[1],scene.scene_lights.dir_lights2_int[2], scene.scene_lights.light_dir2_int[0],scene.scene_lights.light_dir2_int[2],scene.scene_lights.light_dir2_int[1]]
+                    scnLightStruct.append([])
+                    if scene.scene_lights.qty_lights ==3:
+                        scnLightStruct[3] = [scene.scene_lights.dir_lights3_int[0],scene.scene_lights.dir_lights3_int[1],scene.scene_lights.dir_lights3_int[2], scene.scene_lights.light_dir3_int[0],scene.scene_lights.light_dir3_int[2],scene.scene_lights.light_dir3_int[1]]
             
             objsFileC.write("\n   Lights%i %s = gdSPDefLights%i(\n" %(scene.scene_lights.qty_lights, scene.scene_lights.light_struct_name, scene.scene_lights.qty_lights))
-            objsFileC.write("     %i, %i, %i,\n" %(int(scnLightStruct[0][0]*255),int(scnLightStruct[0][1]*255),int(scnLightStruct[0][2]*255) ))
-
-            objsFileC.write("     %i, %i, %i,     %i, %i, %i" %(int(scnLightStruct[1][0]*255),int(scnLightStruct[1][1]*255),int(scnLightStruct[1][2]*255),int(scnLightStruct[1][3]*90),int(scnLightStruct[1][4]*90),int(scnLightStruct[1][5]*90) ))                        
-            if scene.scene_lights.qty_lights >=2:
-                objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i" %(int(scnLightStruct[2][0]*255),int(scnLightStruct[2][1]*255),int(scnLightStruct[2][2]*255),int(scnLightStruct[2][3]*90),int(scnLightStruct[2][4]*90),int(scnLightStruct[2][5]*90) ))
-                if scene.scene_lights.qty_lights ==3:
-                    objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i"%(int(scnLightStruct[3][0]*255),int(scnLightStruct[3][1]*255),int(scnLightStruct[3][2]*255),int(scnLightStruct[3][3]*90),int(scnLightStruct[3][4]*90),int(scnLightStruct[3][5]*90) ))
+            objsFileC.write("     %i, %i, %i,\n" %(int(scnLightStruct[0][0]),int(scnLightStruct[0][1]),int(scnLightStruct[0][2]) ))
+            
+            if scene.scene_lights.qty_lights >=1:
+                objsFileC.write("     %i, %i, %i,     %i, %i, %i" %(int(scnLightStruct[1][0]),int(scnLightStruct[1][1]),int(scnLightStruct[1][2]),int(scnLightStruct[1][3]),int(scnLightStruct[1][4]),int(scnLightStruct[1][5]) ))                        
+                if scene.scene_lights.qty_lights >=2:
+                    objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i" %(int(scnLightStruct[2][0]),int(scnLightStruct[2][1]),int(scnLightStruct[2][2]),int(scnLightStruct[2][3]),int(scnLightStruct[2][4]),int(scnLightStruct[2][5]) ))
+                    if scene.scene_lights.qty_lights ==3:
+                        objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i"%(int(scnLightStruct[3][0]),int(scnLightStruct[3][1]),int(scnLightStruct[3][2]),int(scnLightStruct[3][3]),int(scnLightStruct[3][4]),int(scnLightStruct[3][5]) ))
             objsFileC.write("\n   );\n")
             
             self.N64LightNames[self.N64LightCount] = scene.scene_lights.light_struct_name
@@ -1788,13 +1902,13 @@ class Lights_Xport64(bpy.types.Operator):
         objLightStruct = [[1.0,1.0,1.0]]
         matLightStruct = [[1.0,1.0,1.0]]
         unusedLight = True
-        tempCounter = 0
+        #tempCounter = 0
         DEBUG = obj.obj_props.debug_DL #NOTE: User can debug script and look for problem areas
         SHOWTIPS = obj.obj_props.guide_DL #NOTE: User can view tips and guidance on how to utilize this tool
         
         objMaterials = obj.data.materials
         
-        if obj.obj_lights.custom_lights == True and obj.obj_lights.qty_lights > 0:
+        if obj.obj_lights.custom_lights == True:
             
             for light in self.N64LightNames:
                 if obj.obj_lights.light_struct_name == light:
@@ -1805,32 +1919,44 @@ class Lights_Xport64(bpy.types.Operator):
             if unusedLight == True:
                 #objsFileC.write("\n\n //----- PRINT OBJ LIGHTS ----- \n")
 #NOTE: ---- If an object light is set, grab the ambient light color and the 1st directional light color/angle. ----                       
-                objLightStruct[0] = [obj.obj_lights.amb_light[0],obj.obj_lights.amb_light[1],obj.obj_lights.amb_light[2]]
-                objLightStruct.append([])                        
-                objLightStruct[1] = [obj.obj_lights.dir_lights[0],obj.obj_lights.dir_lights[1],obj.obj_lights.dir_lights[2], obj.obj_lights.light_dir[0],obj.obj_lights.light_dir[2],obj.obj_lights.light_dir[1]] 
+                objLightStruct[0] = [obj.obj_lights.amb_light_int[0],obj.obj_lights.amb_light_int[1],obj.obj_lights.amb_light_int[2]]
                 objLightStruct.append([])
-                if obj.obj_lights.qty_lights >=2:
-                    objLightStruct[2] = [obj.obj_lights.dir_lights2[0],obj.obj_lights.dir_lights2[1],obj.obj_lights.dir_lights2[2], obj.obj_lights.light_dir2[0],obj.obj_lights.light_dir2[2],obj.obj_lights.light_dir2[1]]
-                    objLightStruct.append([])
-                    if obj.obj_lights.qty_lights ==3:
-                        objLightStruct[3] = [obj.obj_lights.dir_lights3[0],obj.obj_lights.dir_lights3[1],obj.obj_lights.dir_lights3[2], obj.obj_lights.light_dir3[0],obj.obj_lights.light_dir3[2],obj.obj_lights.light_dir3[1]]
-                
-                objsFileC.write("\n   Lights%i %s = gdSPDefLights%i(\n" %(obj.obj_lights.qty_lights, obj.obj_lights.light_struct_name, obj.obj_lights.qty_lights))
-                objsFileC.write("     %i, %i, %i,\n" %(int(objLightStruct[0][0]*255),int(objLightStruct[0][1]*255),int(objLightStruct[0][2]*255) ))
 
-                objsFileC.write("     %i, %i, %i,     %i, %i, %i" %(int(objLightStruct[1][0]*255),int(objLightStruct[1][1]*255),int(objLightStruct[1][2]*255),int(objLightStruct[1][3]*90),int(objLightStruct[1][4]*90),int(objLightStruct[1][5]*90) ))                        
-                if obj.obj_lights.qty_lights >=2:
-                    objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i" %(int(objLightStruct[2][0]*255),int(objLightStruct[2][1]*255),int(objLightStruct[2][2]*255),int(objLightStruct[2][3]*90),int(objLightStruct[2][4]*90),int(objLightStruct[2][5]*90) ))
-                    if obj.obj_lights.qty_lights ==3:
-                        objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i"%(int(objLightStruct[3][0]*255),int(objLightStruct[3][1]*255),int(objLightStruct[3][2]*255),int(objLightStruct[3][3]*90),int(objLightStruct[3][4]*90),int(objLightStruct[3][5]*90) ))
+                if obj.obj_lights.qty_lights == 0:
+                    objLightStruct[1] = [0,0,0,0,0,0] #If the user choses '0' directional lights, then the light and direction should also be set to 0 
+                    objLightStruct.append([])
+
+                elif obj.obj_lights.qty_lights >=1:                
+                    objLightStruct[1] = [obj.obj_lights.dir_lights_int[0],obj.obj_lights.dir_lights_int[1],obj.obj_lights.dir_lights_int[2], obj.obj_lights.light_dir_int[0],obj.obj_lights.light_dir_int[2],obj.obj_lights.light_dir_int[1]] 
+                    objLightStruct.append([])
+                    if obj.obj_lights.qty_lights >=2:
+                        objLightStruct[2] = [obj.obj_lights.dir_lights2_int[0],obj.obj_lights.dir_lights2_int[1],obj.obj_lights.dir_lights2_int[2], obj.obj_lights.light_dir2_int[0],obj.obj_lights.light_dir2_int[2],obj.obj_lights.light_dir2_int[1]]
+                        objLightStruct.append([])
+                        if obj.obj_lights.qty_lights ==3:
+                            objLightStruct[3] = [obj.obj_lights.dir_lights3_int[0],obj.obj_lights.dir_lights3_int[1],obj.obj_lights.dir_lights3_int[2], obj.obj_lights.light_dir3_int[0],obj.obj_lights.light_dir3_int[2],obj.obj_lights.light_dir3_int[1]]
+                    
+                objsFileC.write("\n   Lights%i %s = gdSPDefLights%i(\n" %(obj.obj_lights.qty_lights, obj.obj_lights.light_struct_name, obj.obj_lights.qty_lights))
+                objsFileC.write("     %i, %i, %i,\n" %(int(objLightStruct[0][0]),int(objLightStruct[0][1]),int(objLightStruct[0][2]) ))
+                
+                if obj.obj_lights.qty_lights >=1:
+                    objsFileC.write("     %i, %i, %i,     %i, %i, %i" %(int(objLightStruct[1][0]),int(objLightStruct[1][1]),int(objLightStruct[1][2]),int(objLightStruct[1][3]),int(objLightStruct[1][4]),int(objLightStruct[1][5]) ))                        
+                    if obj.obj_lights.qty_lights >=2:
+                        objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i" %(int(objLightStruct[2][0]),int(objLightStruct[2][1]),int(objLightStruct[2][2]),int(objLightStruct[2][3]),int(objLightStruct[2][4]),int(objLightStruct[2][5]) ))
+                        if obj.obj_lights.qty_lights ==3:
+                            objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i"%(int(objLightStruct[3][0]),int(objLightStruct[3][1]),int(objLightStruct[3][2]),int(objLightStruct[3][3]),int(objLightStruct[3][4]),int(objLightStruct[3][5]) ))
                 objsFileC.write("\n   );\n")
-                            
+                                
                 self.N64LightNames[self.N64LightCount] = obj.obj_lights.light_struct_name
                 self.N64LightNames.append([])
                 self.N64LightCount += 1
                 
         for mat in objMaterials:
-            if mat.mat_lights.custom_lights == True and mat.mat_lights.qty_lights > 0:
+            
+            #NOTE ----- For each material, the matLightStruct array and unusedLight bool need to be re-set to avoid objLight duplicates cancelling out unique material lights
+            matLightStruct = [[1.0,1.0,1.0]]
+            unusedLight = True
+        
+            if mat.mat_lights.custom_lights == True:
                 #objsFileC.write("\n//Material Name: %s Light Struct Name: %s \n" % (material.name, material.mat_lights.light_struct_name))
                 
                 for light in self.N64LightNames:
@@ -1842,30 +1968,41 @@ class Lights_Xport64(bpy.types.Operator):
                 if unusedLight == True:
                     #objsFileC.write("\n\n //----- PRINT OBJ LIGHTS ----- \n")
 #NOTE: ---- If an object light is set, grab the ambient light color and the 1st directional light color/angle. ----                       
-                    matLightStruct[0] = [mat.mat_lights.amb_light[0],mat.mat_lights.amb_light[1],mat.mat_lights.amb_light[2]]
-                    matLightStruct.append([])                        
-                    matLightStruct[1] = [mat.mat_lights.dir_lights[0],mat.mat_lights.dir_lights[1],mat.mat_lights.dir_lights[2], mat.mat_lights.light_dir[0],mat.mat_lights.light_dir[2],mat.mat_lights.light_dir[1]] 
+                    matLightStruct[0] = [mat.mat_lights.amb_light_int[0],mat.mat_lights.amb_light_int[1],mat.mat_lights.amb_light_int[2]]
                     matLightStruct.append([])
-                    if mat.mat_lights.qty_lights >=2:
-                        matLightStruct[2] = [mat.mat_lights.dir_lights2[0],mat.mat_lights.dir_lights2[1],mat.mat_lights.dir_lights2[2], mat.mat_lights.light_dir2[0],mat.mat_lights.light_dir2[2],mat.mat_lights.light_dir2[1]]
-                        matLightStruct.append([])
-                        if mat.mat_lights.qty_lights ==3:
-                            matLightStruct[3] = [mat.mat_lights.dir_lights3[0],mat.mat_lights.dir_lights3[1],mat.mat_lights.dir_lights3[2], mat.mat_lights.light_dir3[0],mat.mat_lights.light_dir3[2],mat.mat_lights.light_dir3[1]]
-                    
-                    objsFileC.write("\n   Lights%i %s = gdSPDefLights%i(\n" %(mat.mat_lights.qty_lights, mat.mat_lights.light_struct_name, mat.mat_lights.qty_lights))
-                    objsFileC.write("     %i, %i, %i,\n" %(int(matLightStruct[0][0]*255),int(matLightStruct[0][1]*255),int(matLightStruct[0][2]*255) ))
 
-                    objsFileC.write("     %i, %i, %i,     %i, %i, %i" %(int(matLightStruct[1][0]*255),int(matLightStruct[1][1]*255),int(matLightStruct[1][2]*255),int(matLightStruct[1][3]*90),int(matLightStruct[1][4]*90),int(matLightStruct[1][5]*90) ))                        
-                    if mat.mat_lights.qty_lights >=2:
-                        objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i" %(int(matLightStruct[2][0]*255),int(matLightStruct[2][1]*255),int(matLightStruct[2][2]*255),int(matLightStruct[2][3]*90),int(matLightStruct[2][4]*90),int(matLightStruct[2][5]*90) ))
-                        if mat.mat_lights.qty_lights ==3:
-                            objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i"%(int(matLightStruct[3][0]*255),int(matLightStruct[3][1]*255),int(matLightStruct[3][2]*255),int(matLightStruct[3][3]*90),int(matLightStruct[3][4]*90),int(matLightStruct[3][5]*90) ))
+                    if mat.mat_lights.qty_lights == 0:
+                        matLightStruct[1] = [0,0,0,0,0,0] #If the user choses '0' directional lights, then the light and direction should also be set to 0
+                        matLightStruct.append([])
+
+                    elif mat.mat_lights.qty_lights >=1:                        
+                        matLightStruct[1] = [mat.mat_lights.dir_lights_int[0],mat.mat_lights.dir_lights_int[1],mat.mat_lights.dir_lights_int[2], mat.mat_lights.light_dir_int[0],mat.mat_lights.light_dir_int[2],mat.mat_lights.light_dir_int[1]] 
+                        matLightStruct.append([])
+                        if mat.mat_lights.qty_lights >=2:
+                            matLightStruct[2] = [mat.mat_lights.dir_lights2_int[0],mat.mat_lights.dir_lights2_int[1],mat.mat_lights.dir_lights2_int[2], mat.mat_lights.light_dir2_int[0],mat.mat_lights.light_dir2_int[2],mat.mat_lights.light_dir2_int[1]]
+                            matLightStruct.append([])
+                            if mat.mat_lights.qty_lights ==3:
+                                matLightStruct[3] = [mat.mat_lights.dir_lights3_int[0],mat.mat_lights.dir_lights3_int[1],mat.mat_lights.dir_lights3_int[2], mat.mat_lights.light_dir3_int[0],mat.mat_lights.light_dir3_int[2],mat.mat_lights.light_dir3_int[1]]
+                        
+                    objsFileC.write("\n   Lights%i %s = gdSPDefLights%i(\n" %(mat.mat_lights.qty_lights, mat.mat_lights.light_struct_name, mat.mat_lights.qty_lights))
+                    objsFileC.write("     %i, %i, %i,\n" %(int(matLightStruct[0][0]),int(matLightStruct[0][1]),int(matLightStruct[0][2]) ))
+                    
+                    if mat.mat_lights.qty_lights >=1:
+                        objsFileC.write("     %i, %i, %i,     %i, %i, %i" %(int(matLightStruct[1][0]),int(matLightStruct[1][1]),int(matLightStruct[1][2]),int(matLightStruct[1][3]),int(matLightStruct[1][4]),int(matLightStruct[1][5]) ))                        
+                        if mat.mat_lights.qty_lights >=2:
+                            objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i" %(int(matLightStruct[2][0]),int(matLightStruct[2][1]),int(matLightStruct[2][2]),int(matLightStruct[2][3]),int(matLightStruct[2][4]),int(matLightStruct[2][5]) ))
+                            if mat.mat_lights.qty_lights ==3:
+                                objsFileC.write(",\n     %i, %i, %i,     %i, %i, %i"%(int(matLightStruct[3][0]),int(matLightStruct[3][1]),int(matLightStruct[3][2]),int(matLightStruct[3][3]),int(matLightStruct[3][4]),int(matLightStruct[3][5]) ))
                     objsFileC.write("\n   );\n")
                                 
                     self.N64LightNames[self.N64LightCount] = mat.mat_lights.light_struct_name
                     self.N64LightNames.append([])
                     self.N64LightCount += 1   
 
+
+                    
+                    
+                    
 class Header_Xport64(bpy.types.Operator):
     bl_idname = "poly.xport64"
     bl_label = "Xport64 - Polygon/Tri export"
@@ -1884,6 +2021,17 @@ def roundtohalf(a): #rounds to nearest .5
     
 def roundtoquarter(a): #rounds to nearest .25
     return round(a*4.0)/4.0    
+    
+def flipsign(a): #flips the sign of the variable sent to it
+    return [-i for i in a]
+    
+def checknegativehex(coordinate): #check to see if value of int is negative. If so, convert to a format that will work properly
+    if coordinate < 0:
+        #o.write("\n  //NEGATIVE VALUE: 0x%0004x \n" % coordinate )
+        coordinate = (65535 + coordinate)
+        #o.write("\n  //Converting to NEGATIVE Hex Value: 0x%0004x \n" % coordinate )
+    return coordinate         
+
         
 def isclose(a,b,rel_tol=1e-09, abs_tol = 0.0): #checks if numbers are approximately equal 
     return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
