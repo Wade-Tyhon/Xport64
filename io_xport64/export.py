@@ -22,53 +22,7 @@ import copy
 
 from .gbicom import TEXTURE_4B_TLUT, PRE_BUILT_SETTINGS, GBI_Xport64
 
-#import settings
-#from __init__ import roundtoquarter, isclose, roundtohalf
 
-#---------------------------------------------------------------------------------------------------------
-#IN PROGRESS 10/15/2021:
-#
-#PRIORITY    
-#       - Support for custom external display lists for materials and objects
-#           - Object level display lists is complete
-#       - Continue improving UI for ease of use
-#---------------------------------------------------------------------------------------------------------
-#---------------------------------------------------------------------------------------------------------
-#TO DO NOTES 10/19/2021:        
-#       - Improve ease of use by adding debug material and textures to model with a single button click on setup    
-#       - Work on the fully customizable GBI commands                               
-#       - Add DEBUG message for object and scene lights
-#       
-#---------------------------------------------------------------------------------------------------------
-#---------------------------------------------------------------------------------------------------------
-#RECENT UPDATES (Last update 11/22/2021): 
-#       - Support negative U/V (S/T) values when converting from int to hexidecimal   
-#           - Begins on 1425 and uses checknegativehex to check and convert values and store them in S_Coordinates and T_Coordinate
-#       - Added DEBUG message for material light
-#       - Fixed collision export bug caused by old code not being completely scrubbed. In previous build, some faces in a collision object would not export if UV colors or texture were different on some faces.
-#       - Added new object rig options to use default Xport64 rig or to include your own command
-#       - Updated Scene/Obj/Mat light to optionally enter your values manually
-#       - Fixed error where obj light name was triggering a duplicate light name for material lights, unusedLight variable is now re-set with every material check. 
-#       - Added some guidance to plug-in on what is needed to properly use this plug-in
-#       - Support for Scene, Object and Material lights
-#       - Some debug messages have been moved to print
-#       - Fixed edge case where Tri1 and Tri2 both needed to modify the same vertex - this now uses gSP1Triangle
-#       - Fixed edge case where both Tri1 and Tri2 use modify vertex but Tri1 does not use any of the vertex used in Tri 2 - this now uses gSP2Triangles
-#       - Clean up ModifyVertex to group modified vertexes together when creating gSP1Triangle
-#       - Flesh our UI for ease of use
-#           - If there is no object in scene, no material object in the scene, and blender render is being used, place an error message to guide the user
-#           - Created a handful of test dictionary entries for Pre-Built Commands
-#       - Update Texture + VTX Lighting to use the same method of material calls as Texture + VTX Colors
-#       - Improve export method for obj rotations while using 1:1 bones 
-#       - New Sort methods in place to reduce the number of gSP1Triangle and ModifyVertex calls#
-#           - Fix export _vertexlist numbering
-#       - Add support for gSP2Triangle on PRIM Colors as a first test  
-#                   - Cleaned up this code to make it less convoluted
-#       - Add support for static and dynamic display lists
-#                   - Adding functionality for this now...
-#       - Transfer all textures, prim colors, and other commands from Materials panel
-#       - Move all rendering over to Cycles
-#---------------------------------------------------------------------------------------------------------
 
 class Obj_Properties_Xport64(bpy.types.PropertyGroup):
     bl_label = "Xport64 Object Export Properties"
@@ -97,7 +51,7 @@ class VTX_Xport64(bpy.types.Operator):
     def exportVert(self, o, obj, objCounter):
         print("Exporting Vertices from export.py -> exportVert(self, o, obj, objCounter):")
         bitshift = 6 # Bitshift mod
-        loadlim = 30     # Amount of verts the system will load at a time 32 max limit
+        loadlim = 29     # Amount of verts the system will load at a time 32 max limit
         exportPolyList = True
         DEBUG = obj.obj_props.debug_DL #NOTE: User can debug script and look for problem areas
         SHOWTIPS = obj.obj_props.guide_DL #NOTE: User can view tips and guidance on how to utilize this tool
@@ -238,7 +192,7 @@ class VTX_Xport64(bpy.types.Operator):
           count = 0
 
           for face in poly:
-
+            
             currentActiveVertex = [0,0,0]
             currentActiveLoop = [0,0,0]
             redirectValueCheck = [0,0,0] #checks verts of each polygon. If attempting to re-direct but the difference between the highest and lower polygon is too great, create a new vertex listing
@@ -257,10 +211,53 @@ class VTX_Xport64(bpy.types.Operator):
             activeMat = objMaterials[materialCounter]
             matProperties = objMaterials[materialCounter].mat_props
             
+            
+            
+            
+            
+            
+            
+            
+#ERROR CHECK ----- to see if the current active material has nodes, which is a requirement for exporting:         
+            checkForMaterial = getattr(obj, "active_material", False) 
+            checkForNodes = getattr(checkForMaterial, "node_tree", False)            
+            if checkForNodes != None: # make sure object has nodes enabled
+                print(checkForNodes)
+            else:
+                #print("Make sure all objects contain a material.")
+                print("Object %s does not have a material assigned!" % obj.name)
+                self.report({'WARNING'}, "Xport64 WARNING ----- Material '%s' does not have Nodes enabled and could not be exported. " % checkForMaterial.name)
+                self.report({'WARNING'}, "Xport64 TIP ----- To enable nodes on Material '%s', open the Material tab in the properties window. Select '%s', expand 'Surface' and press the 'Use Noes' button. " % (checkForMaterial.name, checkForMaterial.name))
+                
+                o.write("//Xport64 WARNING ----- Material '%s' does not have Nodes enabled and could not be exported. " % checkForMaterial.name)
+                
+                return {'FINISHED'}
+            
+            
+
+            # checkForMaterial = getattr(obj, "active_material", False)        
+            
+            # if checkForMaterial != None: #Make sure object has a material assigned
+                # activeMat = obj.active_material
+                # print(checkForMaterial)            
+                
+                # checkForNodes = getattr(activeMat, "node_tree", False)            
+                # if checkForNodes != None: # make sure object has nodes enabled
+                    # print(checkForNodes)
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
             if 'Image Texture' in activeMat.node_tree.nodes:
                 textureImage = activeMat.node_tree.nodes["Image Texture"].image
                 textureName = textureImage.name
-                
+                  
 #---------------------------------------------------------------------------------------------------------
 #EXPORTER_NOTES:  The following splits the image name from an extension such as: removeExtension[0] = name (ex. debugTexture) removeExtension[1] = extension (ex .png)
 #---------------------------------------------------------------------------------------------------------
@@ -283,7 +280,7 @@ class VTX_Xport64(bpy.types.Operator):
                     matTextureSize = [1,1]
             
             for vert, loop in zip(face.vertices, face.loop_indices):              
-                
+               
 #---------------------------------------------------------------------------------------------------------
 #EXPORTER_NOTES:  Gather temporary Vertex data- For each poly, grab the coordinates, uv, and vertex color information. This will repeat 3 times per face/poly: 
 #---------------------------------------------------------------------------------------------------------                  
@@ -440,7 +437,7 @@ class VTX_Xport64(bpy.types.Operator):
                              obj.data.vertices[(currentActiveVertex[vertCheck])].normal.x*127, obj.data.vertices[(currentActiveVertex[vertCheck])].normal.y*127, obj.data.vertices[(currentActiveVertex[vertCheck])].normal.z*127))     
                       
                       else:
-                        o.write("   { %.2f, %.2f, %.2f, %i, 0x%0004x, 0x%0004x, %i, %i, %i, %i},  \n" 
+                        o.write("   { %.2f, %.2f, %.2f, %i, 0x%0004x, 0x%0004x, %i, %i, %i, %i}, \n" 
                           % (coord.x*self.scale, coord.y*self.scale, coord.z*self.scale, 1,                             
                              S_Coordinate, T_Coordinate, 
                              obj.data.vertices[(currentActiveVertex[vertCheck])].normal.x*127, obj.data.vertices[(currentActiveVertex[vertCheck])].normal.y*127, obj.data.vertices[(currentActiveVertex[vertCheck])].normal.z*127, 255))     
@@ -469,10 +466,13 @@ class VTX_Xport64(bpy.types.Operator):
 
                     vertexList.append([coord.x*self.scale,coord.y*self.scale,coord.z*self.scale])
                     
+                    S_Coordinate = checknegativehex(int(self.uvValue[objCounter][uvCount][0]*matTextureSize[0]))
+                    T_Coordinate = checknegativehex(int(self.uvValue[objCounter][uvCount][1]*matTextureSize[1]))
+                    
                     if obj.obj_props.sort_Method == "VTX COLOR":
                       o.write("   { %.2f, %.2f, %.2f, %i, 0x%0004x, 0x%0004x, %i, %i, %i, %i}, \n" #Export HEX value
                         % (coord.x*self.scale, coord.y*self.scale, coord.z*self.scale, 1,
-                           int(self.uvValue[objCounter][uvCount][0]*matTextureSize[0]), int(self.uvValue[objCounter][uvCount][1]*matTextureSize[1]), 
+                           S_Coordinate, T_Coordinate, 
                            self.allVertexColors[objCounter][uvCount][0], self.allVertexColors[objCounter][uvCount][1], self.allVertexColors[objCounter][uvCount][2], self.allVertexColors[objCounter][uvCount][3]))
 
                     elif obj.obj_props.sort_Method == "COLLISION":
@@ -483,7 +483,7 @@ class VTX_Xport64(bpy.types.Operator):
                     else:
                         o.write("   { %.2f, %.2f, %.2f, %i, 0x%0004x, 0x%0004x, %i, %i, %i, %i}, \n" #Export HEX value
                           % (coord.x*self.scale, coord.y*self.scale, coord.z*self.scale, 1,
-                             int(self.uvValue[objCounter][uvCount][0]*matTextureSize[0]), int(self.uvValue[objCounter][uvCount][1]*matTextureSize[1]), 
+                             S_Coordinate, T_Coordinate,
                              obj.data.vertices[(currentActiveVertex[vertCheck])].normal.x*127, obj.data.vertices[(currentActiveVertex[vertCheck])].normal.y*127, obj.data.vertices[(currentActiveVertex[vertCheck])].normal.z*127, 255))     
              
                     index+=1
@@ -504,7 +504,7 @@ class VTX_Xport64(bpy.types.Operator):
           o.write("};\n\n")
           if obj.obj_props.anim_Method == "VTX DL":
             bpy.data.meshes.remove(mod_mesh) #removes duplicated mesh used for animation capture   
-          if obj.obj_props.anim_Method == "NO ANIM" or obj.obj_props.anim_Method == "OBJ VARIABLES":          
+          if obj.obj_props.anim_Method == "NO ANIM" or obj.obj_props.anim_Method == "OBJ VARIABLES" or obj.obj_props.anim_Method == "COLLISION":          
             break      
           
 #   ********************************************************************************************************************************************** 
@@ -587,7 +587,7 @@ class Poly_Xport64(bpy.types.Operator):
 #EXPORTER_NOTES:    Many of the most used variables in Poly_Xport64 are defined in __init__.py 
 #---------------------------------------------------------------------------------------------------------  
         bitshift = 6 # Bitshift mod
-        loadlim = 30     # Ammount of verts the sytem will load at a time 32 max limit
+        loadlim = 29     # Ammount of verts the sytem will load at a time 32 max limit
         exportPolyList = True
     
         path = 'Users\micha\Documents\Game Design' #TEST Exporting C files 
@@ -609,50 +609,119 @@ class Poly_Xport64(bpy.types.Operator):
         poly = obj.data.polygons
         uv = obj.data.uv_layers.active
 
-    #RIG VARIABLES
-    
-        #rigName = obj.obj_props.rig_Template_Name
-        #rigJoint = obj.obj_props.joint_Template_Name
-
 #---------------------------------------------------------------------------------------------------------
 #EXPORTER_NOTES:    obj.obj_props.anim_Method == "OBJ VARIABLES" checks for whether the user has chosen the Pos, Rot, Scl option for animation export
 #--------------------------------------------------------------------------------------------------------- 
-        if obj.obj_props.anim_Method == "OBJ VARIABLES":         
-            o.write("RigAnimation %s_anim[] = { \n \n" % name) #NOTE ----- begin animation structure in .c file:
+        if obj.obj_props.anim_Method == "OBJ VARIABLES":
+        
+            bpy.context.area.type = 'DOPESHEET_EDITOR'
+            bpy.context.space_data.mode = 'ACTION'
             
-#---------------------------------------------------------------------------------------------------------
-#EXPORTER_NOTES:    Certain functions and variables can be defined/declared in a .h script if the user enables it with 'sceneprops.create_header_file'
-#TO_DO_NOTE:        This functionality will be fleshed out in future updates.
-#---------------------------------------------------------------------------------------------------------  
-            if sceneprops.create_header_file == True: #NOTE ----- Save these commands in a string for later use in .h file for defintions and declarations:  
-                self.definitionsFile[self.commandCount] = ("extern RigAnimation %s_anim[];\n" % name)
-                self.definitionsFile.append([])                
-                self.commandCount +=1    
-                
-            for f in r:        
-                scene.update()                
-                scene.frame_set(f)           
-                objPos = obj.matrix_world.to_translation() #records position of bone to the object
-                objRot = obj.matrix_world.to_euler() #records rotation of bone to the object
-                objScale = obj.matrix_world.to_scale() #records scale of bone to the object
-                rot_angles_X = math.degrees(objRot[0]) #converts to degrees
-                rot_angles_Y = math.degrees(objRot[1]) #converts to degrees
-                rot_angles_Z = math.degrees(objRot[2]) #converts to degrees
-                
-                o.write("%2f, %2f, %2f,\n    %2f, %2f, %2f,\n       %2f, %2f, %2f,\n " % (objPos.x*self.scale, objPos.y*self.scale, objPos.z*self.scale, rot_angles_X, rot_angles_Y, rot_angles_Z, objScale.x, objScale.y, objScale.z))
-            o.write("\n};\n\n")
+            self.tempAnimAction = bpy.context.object.animation_data.action
+            #self.tempAnimAction = bpy.data.actions.name
+            print("Current Action on Export: %s " % self.tempAnimAction)
+            
+            for animName in bpy.data.actions:            
+#NOTE ----- Store name of current action as well as the pos,rot, and scale of current frame
+#           Duplicate frames will be ignored by default and the number of duplicates is stored in animDupCount
+                animAction = ""
+                animLastPos = {0,0,0}
+                animLastRot = {0,0,0}
+                animLastScl = {0,0,0}
+                animDupCount = 0
+                keyFrames = 0
+                finalKeyFrame = 0
+                    
+                print("\n Action Name: %s \n" % animName.name)
+                animAction = animName.name
+            
+                bpy.context.object.animation_data.action = bpy.data.actions[animAction]
 
-#---------------------------------------------------------------------------------------------------------
-#TO_DO_NOTE:        Part of the "OBJ VARIABLES" is commented out as this is version. Right now user must use their own method for rigging.
-#                   However, a simple rigging template is going to be available with the next version of the exporter and demo game.
-#                       - Include more options for a "rig" name / structure
-#                       - Finish setting up rig assignment section of *_UpdateFrame
-#---------------------------------------------------------------------------------------------------------  
-            
-#START------------------------------------------WIP Animation Rig Settings-------------------------------------------
-            
+#NOTE ----- Get Keyframes of the current animation action
+                for fcu in bpy.data.actions[animAction].fcurves:
+                    finalKeyFrame = 0
+                    #print(fcu.data_path + " channel " + str(fcu.array_index))                    
+                    for keyframe in fcu.keyframe_points:
+                        #keyFrames += 1 
+                        #keyframe.
+                        finalKeyFrame = bpy.context.scene.frame_current
+                    #exportFrame = bpy.context.scene.frame_current
+                    
+                        #print("animAction Keyframe %i: %i" % (keyFrames, finalKeyFrame)) #coordinates x,y
+                     
+                o.write("RigAnimation %s_anim_%s[] = { \n \n" % (name,animAction)) #NOTE ----- begin animation structure in .c file:
+                            
+                #bpy.context.area.type = 'INFO'
+                #bpy.context.object.animation_data.action = bpy.data.action['playerStartJump']
+                #for action in obj.animation_data:
+                #obj.animation_data.action = playerStartJump
+                #bpy.context.animation_data.action = 'playerStartJump'
+                #o.write("\n //ANIMATIONS ON OBJECT: %s \n \n" % obj.animation_data.action.name) #NOTE ----- begin animation structure in .c file:
+    #---------------------------------------------------------------------------------------------------------
+    #EXPORTER_NOTES:    Certain functions and variables can be defined/declared in a .h script if the user enables it with 'sceneprops.create_header_file'
+    #TO_DO_NOTE:        This functionality will be fleshed out in future updates.
+    #---------------------------------------------------------------------------------------------------------  
+                if sceneprops.create_header_file == True: #NOTE ----- Save these commands in a string for later use in .h file for defintions and declarations:  
+                    self.definitionsFile[self.commandCount] = ("extern RigAnimation %s_anim_%s[];\n" % (name,animAction))
+                    self.definitionsFile.append([])                
+                    self.commandCount +=1    
+                    
+                for f in r:        
+                    scene.update()                
+                    scene.frame_set(f)           
+                    objPos = obj.matrix_world.to_translation() #records position of bone to the object
+                    objRot = obj.matrix_world.to_euler() #records rotation of bone to the object
+                    objScl = obj.matrix_world.to_scale() #records scale of bone to the object
+                    rot_angles_X = math.degrees(objRot[0]) #converts to degrees
+                    rot_angles_Y = math.degrees(objRot[1]) #converts to degrees
+                    rot_angles_Z = math.degrees(objRot[2]) #converts to degrees
+                    
+                    
+
+# TO DO NOTE -----  Have a setting for a max number of printed duplicate frames?
+#                   Allow user to skip "duplicate" frames or not?
+#                   Or have "hold" frames as an option in the final export? 
+#                   Not sure how to implement but looking into it...                     
+                    
+#NOTE ----- Check current frame against previous frames to see if a change occurs...                    
+                    
+                    if self.skipDupFrames == True: #Runs if user chooses to skip any duplicate frames
+                        if animLastPos == objPos and animLastRot == objRot and animLastScl == objScl:
+                            
+                            if animDupCount <= 0:
+                                print("\n")
+                            animDupCount += 1
+                            print("Found Duplicate Frame # %i..." % f)
+                        
+                        else: 
+                            if animDupCount > 0: 
+                                o.write("\n//Duplicate Frames: %i \n" % animDupCount)
+                                animDupCount = 0
+                            o.write("%2f, %2f, %2f,\n    %2f, %2f, %2f,\n       %2f, %2f, %2f,\n " % (objPos.x*self.scale, objPos.y*self.scale, objPos.z*self.scale, rot_angles_X, rot_angles_Y, rot_angles_Z, objScl.x, objScl.y, objScl.z))    
+                    else: #Runs if user chooses to include any duplicate animation frames (self.skipDupFrames == False)
+                            o.write("%2f, %2f, %2f,\n    %2f, %2f, %2f,\n       %2f, %2f, %2f,\n " % (objPos.x*self.scale, objPos.y*self.scale, objPos.z*self.scale, rot_angles_X, rot_angles_Y, rot_angles_Z, objScl.x, objScl.y, objScl.z))            
+#NOTE ----- store current pos, rot, scl for comparison with next frame to see if they are duplicate frames
+                    animLastPos = objPos
+                    animLastRot = objRot
+                    animLastScl = objScl
+                    
+                if animDupCount > 0: 
+                    o.write("\n//Duplicate Frames: %i \n" % animDupCount)
+                    animDupCount = 0
+                
+                o.write("\n};\n\n")
+
+    #---------------------------------------------------------------------------------------------------------
+    #TO_DO_NOTE:        Part of the "OBJ VARIABLES" is commented out as this is version. Right now user must use their own method for rigging.
+    #                   However, a simple rigging template is going to be available with the next version of the exporter and demo game.
+    #                       - Include more options for a "rig" name / structure
+    #                       - Finish setting up rig assignment section of *_UpdateFrame
+    #---------------------------------------------------------------------------------------------------------  
+                
+    #START------------------------------------------WIP Animation Rig Settings-------------------------------------------
+                
             if obj.obj_props.update_frame_function == True:            
-                o.write("void %s_UpdateFrame( %s )\n { \n" % (name, animFrame_setting))        
+                o.write("void %s_UpdateFrame( %s ){ \n" % (name, animFrame_setting))        
                 o.write("   %s_TempVectorPos = %s_anim[animFrame].pos;\n" % (scene.scene_props.current_scene_id, name))
                 o.write("   %s_TempVectorRot = %s_anim[animFrame].rot;\n" % (scene.scene_props.current_scene_id, name))  
                 o.write("   %s_TempVectorScl = %s_anim[animFrame].scl;\n\n" % (scene.scene_props.current_scene_id, name))   
@@ -664,7 +733,6 @@ class Poly_Xport64(bpy.types.Operator):
                     o.write("   SetVector3(&%s.animRig.joint.%s.pos, %s_TempVectorPos.x,%s_TempVectorPos.y,%s_TempVectorPos.z);\n" % (obj.obj_props.rig_Template_Name, obj.obj_props.joint_Template_Name, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id))
                     o.write("   SetVector3(&%s.animRig.joint.%s.rot, %s_TempVectorRot.x,%s_TempVectorRot.y,%s_TempVectorRot.z);\n" % (obj.obj_props.rig_Template_Name, obj.obj_props.joint_Template_Name, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id))
                     o.write("   SetVector3(&%s.animRig.joint.%s.scl, %s_TempVectorScl.x,%s_TempVectorScl.y,%s_TempVectorScl.z);\n" % (obj.obj_props.rig_Template_Name, obj.obj_props.joint_Template_Name, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id, scene.scene_props.current_scene_id))
-                    
                     
                     #o.write("       //NOTE: Assign values to your rig here. For instance: \n")
                     
@@ -691,7 +759,7 @@ class Poly_Xport64(bpy.types.Operator):
             
 #START------------------------------------------Begin structure of polylist function (display list commands)-------------------------------------------         
         elif obj.obj_props.static_DL != True:
-            o.write("void %s_PolyList( %s ){ \n\n   Vtx *%s_VTXPointer = &%s_VertList_%i[0]; \n\n" % (name, animFrame_setting, name, name, scene.frame_start))             
+            o.write("\nvoid %s_PolyList( %s ){ \n\n   Vtx *%s_VTXPointer = &%s_VertList_%i[0]; \n\n" % (name, animFrame_setting, name, name, scene.frame_start))             
             if sceneprops.create_header_file == True: #NOTE ----- If user selects to export definitions / declarations to a header file: 
                 self.definitionsFile[self.commandCount] = ("extern void %s_PolyList( %s );\n" % (name, animFrame_setting))                
                 self.definitionsFile.append([])
@@ -957,9 +1025,9 @@ class Poly_Xport64(bpy.types.Operator):
               
               if obj.obj_props.sort_Method == "COLLISION":
               
-                  colFaceCount = 0;
-              
-                  while primColorCheck < primColorCount:                    
+                    colFaceCount = 0
+                    primColorCount = 1  
+                                      
                     modifiedUVValues = copy.deepcopy(self.usedUVValues) #reset modified UV values since there is a new gSPVertex call
                     # if self.debugCheck == True:
                         # o.write("//MODIFIED UV VALUES RESET \n")                    
@@ -1058,11 +1126,11 @@ class Poly_Xport64(bpy.types.Operator):
                     offset = 0
                     offsetAdjust = 0
 
-                  o.write("}; \n\n")
-                  o.write("MeshColliderObj %s_MColObj[] = { \n" % (name))                  
-                  o.write("   %s_MColVtx_%i, \n"% (name, f))
-                  o.write("   %s_MColTri, \n"% (name))
-                  o.write("   %i, \n}; \n"% (colFaceCount))
+                    o.write("}; \n\n")
+                    o.write("MeshColliderObj %s_MColObj[] = { \n" % (name))                  
+                    o.write("   %s_MColVtx_%i, \n"% (name, f))
+                    o.write("   %s_MColTri, \n"% (name))
+                    o.write("   %i, \n}; \n"% (colFaceCount))
                 #s_MeshVtx
                 #s_MColTri
                 #colFaceCount
@@ -1142,7 +1210,26 @@ class Poly_Xport64(bpy.types.Operator):
 
 #NOTE: ---- Check the active material's node tree to see if the user has included a texture for this material ----
 #IMPORTANT NOTE: ---- TEXTURE USE REQUIRES CYCLES RENDER ---- 
-                    textureSize = [0,0]                        
+                    textureSize = [0,0]
+
+
+
+                    
+                    
+#ERROR CHECK ----- to see if the current active material has nodes, which is a requirement for exporting:                
+                    checkForNodes = getattr(activeMat, "node_tree", False)            
+                    if checkForNodes != None: # make sure object has nodes enabled
+                        print(checkForNodes)
+                    else:
+                        #print("Make sure all objects contain a material.")
+                        print("Object %s does not have a material assigned!" % obj.name)
+                        self.report({'WARNING'}, "Xport64 WARNING ----- Material %s does not have a material assigned and could not be exported." % activeMat.name)
+                        return {'FINISHED'}
+
+
+                        
+                        
+                    
                     if 'Image Texture' in activeMat.node_tree.nodes:
                         print("Texture Found!")
                         textureImage = activeMat.node_tree.nodes["Image Texture"].image
@@ -1266,9 +1353,17 @@ class Poly_Xport64(bpy.types.Operator):
                                             
                                         if "ClearGeometryMode" in GBIDictionary:     
                                             o.write(GBIDictionary["ClearGeometryMode"]% (DL_start_setting, DL_name_setting, DL_end_setting))
-                                            
-                                        if "SetGeometryMode" in GBIDictionary:     
-                                            o.write(GBIDictionary["SetGeometryMode"]% (DL_start_setting, DL_name_setting, DL_end_setting))                                                
+                                        
+
+                                    #    if obj.obj_props.sort_Method == "VTX COLOR" or obj.obj_props.sort_Method == "VTX LIGHTING"
+                                        
+                                        if  obj.obj_props.sort_Method == "VTX LIGHTING":                                        
+                                            if "SetGeometryModeVTXLIGHT" in GBIDictionary:     
+                                                o.write(GBIDictionary["SetGeometryModeVTXLIGHT"]% (DL_start_setting, DL_name_setting, DL_end_setting))    
+
+                                        elif  obj.obj_props.sort_Method == "VTX COLOR":                                        
+                                            if "SetGeometryModeVTXCOLOR" in GBIDictionary:     
+                                                o.write(GBIDictionary["SetGeometryModeVTXCOLOR"]% (DL_start_setting, DL_name_setting, DL_end_setting))                                                  
    
                                         if "Texture" in GBIDictionary:
                                             o.write(GBIDictionary["Texture"]% (DL_start_setting, DL_name_setting, DL_end_setting))
@@ -1287,8 +1382,9 @@ class Poly_Xport64(bpy.types.Operator):
                                          
                                         if "LoadTextureBlock_4b" in GBIDictionary:
                                             if objExportTextureCoords == True:
-                                                o.write(GBIDictionary["LoadTextureBlock_4b"]% (DL_start_setting, DL_name_setting, textureName, 
-                                                    textureSize[0],textureSize[1], matWrapSettings[0], matWrapSettings[1], matMaskSettings[0], matMaskSettings[1], 
+                                                o.write(GBIDictionary["LoadTextureBlock_4b"]% (DL_start_setting, DL_name_setting, textureName,                                                    
+                                                   textureImage.size[0],textureImage.size[1], matWrapSettings[0], matWrapSettings[1], matMaskSettings[0], matMaskSettings[1], 
+                                                   # textureSize[0],textureSize[1], matWrapSettings[0], matWrapSettings[1], matMaskSettings[0], matMaskSettings[1], 
                                                     matShiftSettings[0], matShiftSettings[1], DL_end_setting))
                                             else:
                                                 o.write("\n\n//Xport64 WARNING ----- GBI Commands for LoadTextureBlock_4b require texture but no Image Texture node found! \n\n" )
@@ -1325,8 +1421,8 @@ class Poly_Xport64(bpy.types.Operator):
                                         if "SetColorDither" in GBIDictionary:     
                                             o.write(GBIDictionary["SetColorDither"]% (DL_start_setting, DL_name_setting, DL_end_setting))
                                             
-                                        if "sDPSetAlphaDither" in GBIDictionary:     
-                                            o.write(GBIDictionary["sDPSetAlphaDither"]% (DL_start_setting, DL_name_setting, DL_end_setting))
+                                        if "SetAlphaDither" in GBIDictionary:     
+                                            o.write(GBIDictionary["SetAlphaDither"]% (DL_start_setting, DL_name_setting, DL_end_setting))
                                         
                                     elif objExportPrinting == 'MACROS':
                                         o.write("\n   %s(%s %s, %s, RES_%ix%i, %s,%s, %s,%s, %s,%s  %s\n\n" % (matProperties.prebuilt_commands, DL_name_setting, textureName, tlutName, 
@@ -1417,41 +1513,30 @@ class Poly_Xport64(bpy.types.Operator):
 
                             gSP2TriangleHold[gSP2TriangleCheck] = [redirectValue[tempA]-offset, redirectValue[tempB]-offset, redirectValue[tempC]-offset, redirectValue[tempA]-offset]
 
-    #NOTE: Check UV coordinates of the currently used UV Values for the current Vertex and see if ModifyVertex is needed
-    #NOTE: If user has set "Export ST and Texture Commands" (obj_props.gbi_com_textures) to false then no ModifyVertex commands will be used. 
-    #This is useful if rendering the object with primitive colors. It will save texture commands, UV commands, and allow for more gSP2Triangles commands
-    #matTextureSize[0]textureSize
+    #NOTE ----- Check UV coordinates of the currently used UV Values for the current Vertex and see if ModifyVertex is needed
+    #NOTE ----- If user has set "Export ST and Texture Commands" (obj_props.gbi_com_textures) to false then no ModifyVertex commands will be used. 
+    #           This is useful if rendering the object with primitive colors. It will save texture commands, UV commands, and allow for more gSP2Triangles commands
+    #           matTextureSize[0]textureSize
+    
                             if objExportTextureCoords == True:                            
                                 S_Coordinate = 0
                                 T_Coordinate = 0
+                                
+                                
+    #NOTE ----- When re-using a tri for a new polygon, this compares the current polygon's ST (UV) coordinates with the last time it was used. 
+    #           If the coordinates are different, then it is tagged as "UPDATE_GSPVERTEX_AND_UVCOORDS" or "UPDATE_UVCOORDS"
+                                
                                 if redirectValue[tempA]-offset >= 0 and redirectValue[tempB]-offset >= 0 and redirectValue[tempC]-offset >= 0:
                                     modify = False
                                     if roundtoquarter(self.uvValue[objCounter][tempA][0]) != roundtoquarter(modifiedUVValues[objCounter][redirectValue[tempA]][0]) or roundtoquarter(self.uvValue[objCounter][tempA][1]) != roundtoquarter(modifiedUVValues[objCounter][redirectValue[tempA]][1]):  
                                         modify = True 
                                         
                                         #NOTE ----- Check if either the S or T coordinate is a negative value and if so, convert this to a format that the N64 can understand 
-                                        #S_Coordinate = int((self.uvValue[objCounter][tempA][0])*textureSize[0])
-                                        #T_Coordinate = int((self.uvValue[objCounter][tempA][1])*textureSize[1])       
-                                        
-                                        # S_Coordinate = checknegativehex(S_Coordinate)
-                                        # T_Coordinate = checknegativehex(T_Coordinate)
+
                                         S_Coordinate = checknegativehex(int((self.uvValue[objCounter][tempA][0])*textureSize[0]))
                                         T_Coordinate = checknegativehex(int((self.uvValue[objCounter][tempA][1])*textureSize[1]))
                                         
-                                        
-                                        # if S_Coordinate < 0:
-                                            # o.write("\n  //NEGATIVE VALUE: 0x%0004x \n" % S_Coordinate )
-                                            # S_Coordinate = (65535 + S_Coordinate)
-                                            # o.write("\n  //Converting to NEGATIVE Hex Value: 0x%0004x \n" % S_Coordinate )                                            
-                                        # if T_Coordinate < 0:
-                                            # o.write("\n  //NEGATIVE VALUE: 0x%0004x \n" % T_Coordinate )
-                                            # S_Coordinate = (65535 + T_Coordinate)
-                                            # o.write("\n  //Converting to NEGATIVE Hex Value: 0x%0004x \n" % T_Coordinate )
-                                        
-                                        
-                                        
                                         modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting,redirectValue[tempA]-offset, S_Coordinate, T_Coordinate, DL_end_setting, self.uvValue[objCounter][tempA][0], self.uvValue[objCounter][tempA][1]))
-                                        #modifyVertexCommands[gSP2TriangleCheck] += ("   %sSPModifyVertex(%s %d,   G_MWO_POINT_ST, 0x%0004x%0004x%s  /*New Coords: %.2f, %.2f*/" % (DL_start_setting, DL_name_setting,redirectValue[tempA]-offset, int((self.uvValue[objCounter][tempA][0])*textureSize[0]), int((self.uvValue[objCounter][tempA][1])*textureSize[1]), DL_end_setting, self.uvValue[objCounter][tempA][0], self.uvValue[objCounter][tempA][1]))
 
                                         modifiedUVValues[objCounter][redirectValue[tempA]][0] = self.uvValue[objCounter][tempA][0] #update modifiedUVValues 
                                         modifiedUVValues[objCounter][redirectValue[tempA]][1] = self.uvValue[objCounter][tempA][1]
@@ -1497,26 +1582,29 @@ class Poly_Xport64(bpy.types.Operator):
                                 loop = 0
                                 while loop < len(modifyVertexCompare[0]):
                                     if DEBUG == True: #DEBUG CHECK VALUES:---  
-                                        o.write("\n//modifyVertexCompare[0][%i]\n" %(modifyVertexCompare[0][loop]))
+                                        o.write("\n//modifyVertexCompare[0][%i]: Tri 1 is modifying vertex %i \n" %(modifyVertexCompare[0][loop], modifyVertexCompare[0][loop]))
                                     loop +=1
                                 loop = 0
                                 while loop < len(modifyVertexCompare[1]):
                                     if DEBUG == True: #DEBUG CHECK VALUES:---  
-                                        o.write("\n//modifyVertexCompare[1][%i]\n" %(modifyVertexCompare[1][loop]))
+                                        o.write("\n//modifyVertexCompare[1][%i]: Tri 2 is modifying vertex %i \n" % (modifyVertexCompare[1][loop], modifyVertexCompare[1][loop]))                                        
                                     loop +=1
 
                                 if DEBUG == True: #DEBUG CHECK VALUES:---  
                                     o.write("\n//Testing for use1Triangle\n" )
+                                    #o.write("//NOTE ----- If texture coordinates for a specific face are warped or shifted, it is likely that tri 2 is modifying a vertex used by tri 1. This shouldn't happen and is a bug. Let me know! \n")
                                     
                                 loopOuter = 0
                                 loopInner = 0
                                 
 #NOTE ---- Make sure that tri1 and tri2 are not modifying the same vertex
                                 while loopOuter < len(modifyVertexCompare[0]):
-                                    while loopInner < len(modifyVertexCompare[1]):                                            
-                                        if faceOptions[0] != OutputOptions.FORCE_1TRIANGLE:
-                                            if DEBUG == True: #DEBUG CHECK VALUES:---  
-                                                o.write("//Outer: %i  Inner: %i\n" % (redirectValue[loopOuter]-offset, redirectValue[loopInner]-offset) )
+                                    while loopInner < len(modifyVertexCompare[1]):
+                                    
+                                        if DEBUG == True: #DEBUG CHECK VALUES:---  
+                                            o.write("//Outer: %i  Inner: %i\n" % (redirectValue[loopOuter]-offset, redirectValue[loopInner]-offset) ) 
+                                            
+                                        if faceOptions[0] != OutputOptions.FORCE_1TRIANGLE:                                           
                                             if modifyVertexCompare[0][loopOuter] == modifyVertexCompare[1][loopInner]:
                                                 use1Triangle = True
                                                 #faceOptions[0] = OutputOptions.FORCE_1TRIANGLE
@@ -1524,10 +1612,13 @@ class Poly_Xport64(bpy.types.Operator):
                                                     o.write("//Split into 2 separate 1Triangle Calls\n" )
                                                 loopOuter = tempC+3
                                                 loopInnter = tempA
-                                                break                                               
-                                            
+                                                break
+                                            # if DEBUG == True: #DEBUG CHECK VALUES:--- 
+                                                # o.write("//NOTE ---- Increase loopInner: %i " % loopInner)
                                             loopInner += 1
                                     loopOuter += 1
+                                    # if DEBUG == True: #DEBUG CHECK VALUES:--- 
+                                        # o.write("//NOTE ---- Increase loopOuter: %i " % loopOuter)
                                     loopInner = 0 
                                     
 #NOTE ---- Make sure that tri2 is not modifying a vertex used in tri1  
@@ -1537,11 +1628,21 @@ class Poly_Xport64(bpy.types.Operator):
                                     while loopOuter < len(modifyVertexCompare[1]):
                                         if DEBUG == True: #DEBUG CHECK VALUES:---     
                                             o.write("//NOTE ---- tri1:(%i, %i, %i) \n" % (gSP2TriangleHold[0][0], gSP2TriangleHold[0][1], gSP2TriangleHold[0][2]))
-                                        if (modifyVertexCompare[1][loopOuter] == gSP2TriangleHold[0][0]) or  (modifyVertexCompare[1][loopOuter] == gSP2TriangleHold[0][1]) or  (modifyVertexCompare[1][loopOuter] == gSP2TriangleHold[0][2]) :
+                                        
+# NOTE ----- Check to make sure that the modified vertex in tri2 (modifyVertexCompare[1][*]) is not altering an unmodified vertex in tri1 (gSP2TriangleHold[0][*]+offset)                                        
+                                        if (modifyVertexCompare[1][loopOuter] == (gSP2TriangleHold[0][0]+offset)) or  (modifyVertexCompare[1][loopOuter] == (gSP2TriangleHold[0][1] + offset)) or  (modifyVertexCompare[1][loopOuter] == (gSP2TriangleHold[0][2] + offset)) :
                                             if DEBUG == True: #DEBUG CHECK VALUES:--- 
-                                                o.write("//NOTE ---- tri2:(%i) is modifying a value used in tri1:(%i, %i, %i) \n" % (modifyVertexCompare[1][loopOuter], gSP2TriangleHold[0][0], gSP2TriangleHold[0][1], gSP2TriangleHold[0][2]))
-                                            use1Triangle = True
-                                        loopOuter +=1                                    
+                                                o.write("//NOTE ---- tri2:(%i) is modifying a value used in tri1:(%i, %i, %i) \n" % (modifyVertexCompare[1][loopOuter], gSP2TriangleHold[0][0]+ offset, gSP2TriangleHold[0][1]+ offset, gSP2TriangleHold[0][2]+ offset))
+                                            use1Triangle = True 
+                                        loopOuter +=1                                        
+                                    loopOuter  = 0 
+                                    
+                                    while loopOuter < len(modifyVertexCompare[0]):
+                                        if (modifyVertexCompare[0][loopOuter] == (gSP2TriangleHold[1][0]+offset)) or  (modifyVertexCompare[0][loopOuter] == (gSP2TriangleHold[1][1] + offset)) or  (modifyVertexCompare[0][loopOuter] == (gSP2TriangleHold[1][2] + offset)) :
+                                            if DEBUG == True: #DEBUG CHECK VALUES:--- 
+                                                o.write("//NOTE ---- tri1:(%i) is modifying a value used in tri2:(%i, %i, %i) \n" % (modifyVertexCompare[0][loopOuter], gSP2TriangleHold[1][0]+ offset, gSP2TriangleHold[1][1]+ offset, gSP2TriangleHold[1][2]+ offset))
+                                            use1Triangle = True    
+                                        loopOuter +=1                                            
                                     
                                 if use1Triangle == True:
                                     if SHOWTIPS == True or DEBUG == True:

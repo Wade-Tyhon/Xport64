@@ -23,11 +23,22 @@ bl_info = {
 #---------------------------------------------------------------------------------------------------------
 #                   - Add settings for fully customized GBI Commands
 #                   - Add setting for printing Macros GBI Commands (that take arguments)
+#                   - 
 #---------------------------------------------------------------------------------------------------------
 
 #---------------------------------------------------------------------------------------------------------
 #-----------------------------------------MOST RECENT UPDATES---------------------------------------------
 #---------------------------------------------------------------------------------------------------------
+#UPDATE 12/18/2021: 
+#                   - Multiple animations now supported with the action editor
+#                   - Xport64 Animation rig basics now included, should be completed in next update
+#                   - Fixed error in naming where "SetAlphaDither" lines were not being called
+#                   - Added additional checks for UV coordinates to make sure that a vertex modified in tri2 (modifyVertexCompare[1][*]) is not altering an unmodified vertex in tri1 (gSP2TriangleHold[0][*]+offset)                                        
+#                   - Fix collision export bug where collision tri's were exporting multiple times (once for each vertex color)
+#                   - Support negative U/V (S/T) values when converting from int to hexidecimal   
+#                           - Begins on 1425 and uses checknegativehex to check and convert values and store them in S_Coordinates and T_Coordinate
+#                   - Added DEBUG message for material light
+#                   - General bug fixes and UI improvements
 #UPDATE 11/30/2021: 
 #                   - Fixed error with negative S/T variables
 #                   - Added new UI updates  
@@ -115,7 +126,13 @@ class ExportN64DisplayList(bpy.types.Operator):
     default     = 1.0,
     min         = 0.01,
     max         = 1000.0,
-    precision   = 2)
+    precision   = 4)
+    
+  skipDupFrames = bpy.props.BoolProperty(
+    name        = "Skip Duplicate Frames",
+    description = "If exporting animations, skip any duplicate frames.",
+    default     = True,
+  )
   
   sttile = bpy.props.FloatProperty(
     name        = "Texture Tiling",
@@ -255,8 +272,14 @@ class ExportN64DisplayList(bpy.types.Operator):
     
     
     
-    
+    startingAnimFrame = bpy.context.scene.frame_current
+    #bpy.context.object.animation_data.action = bpy.data.action['playerStartJump']
     for obj in bpy.context.scene.objects:
+    
+    #  bpy.context.area.type = 'DOPESHEET_EDITOR'
+    #  bpy.context.space_data.mode = 'ACTION'
+    #  bpy.context.object.animation_data.action = bpy.data.actions['playerStartJump']    
+      
       if obj.type == 'MESH' and descends(bpy.context.selected_objects, obj):
         bpy.context.scene.frame_set(0)
         
@@ -267,6 +290,8 @@ class ExportN64DisplayList(bpy.types.Operator):
             tempMesh = obj.to_mesh(bpy.context.scene, True, 'PREVIEW') #create a duplicate of the Mesh for triangulating 
             mesh_triangulate(tempMesh) #triangulate this temporary mesh
             obj.data = tempMesh #set objects current mesh to temporary mesh
+            tempAnimAction = "" #for storing the animation action that was active when exported
+            
             
             objectName = self.clean_name(obj.name)
             
@@ -276,14 +301,27 @@ class ExportN64DisplayList(bpy.types.Operator):
             
             Poly_Xport64.exportPoly(self, file, obj,objCounter)
             objCounter +=1
-            bpy.context.scene.frame_set(0)
+            bpy.context.area.type = 'INFO'
+           # self.tempAnimAction = bpy.context.object.animation_data.action
+            
+            
+            # self.tempAnimAction = bpy.context.object.animation_data.action
+            if tempAnimAction != "": #if this object has been animated...
+                bpy.context.object.animation_data.action = tempAnimAction
+            
+            
+            bpy.context.scene.frame_set(startingAnimFrame)            
             obj.data = originalMesh #return original, un-triangulated mesh
         else:
             print("Object %s does not have a material assigned!" % obj.name)
             self.report({'WARNING'}, "Xport64 WARNING ----- Object %s does not have a material assigned and could not be exported." % obj.name)
             return {'FINISHED'}
-        
+            
     
+        
+      #elif obj.type == 'BONE':
+        #bpy.context.object.animation_data.action = bpy.data.action['playerStartJump']
+        
     if sceneProps.create_header_file == True:        
         fileH = open(self.directory + self.filename + '_%s_defs.h'% sceneProps.scene_header_id, 'w')
         self.headerFileName = (self.filename + '_%s_defs'% sceneProps.scene_header_id)

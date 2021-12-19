@@ -10,35 +10,7 @@ bl_info = {
   "tracker_url": "",
   "support": "COMMUNITY",
   "category": "N64 Model Editing" }
-#---------------------------------------------------------------------------------------------------------
-#IN PROGRESS:
-#WIP2       - In-Line GBI Commands 
-#               - Add additional pre-built options for lit objects, effects, etc
-#           
-#---------------------------------------------------------------------------------------------------------
 
-#---------------------------------------------------------------------------------------------------------
-#TO DO NOTES:
-#           - Add secondary external display list call option to Material Properties window so that each material can have its own setup if needed
-#           - Add Object "Update Frame Function" for animated objects
-#           - Create collapsible setting for each section of scene, obj, and material settings
-#           - Set up different default name for scene, obj, and material lights
-#           - Add 'DISABLED' messages to any non-expanded setting box when disabled 
-#           - Add collapsable tabs to all Material settings
-#           - Add an optional external display list for each material similar to the object display list
-#           - Complete rig printing setup. Continue work on line 390 at "#NOTE ----- If using a default Xport64 rig:"
-#---------------------------------------------------------------------------------------------------------
-
-#---------------------------------------------------------------------------------------------------------
-#RECENT UPDATES:
-#           - Create a dictionary to hold GBI commands to use for in-line command printing
-#           - Allow user to call an external display list for 
-#           - Add support for static and dynamic display lists
-#           - Allow user to set int manually, export now grabs data for lights from _int version of each 
-#           variable rather than the color or angle tools
-#           - Material settings are now restructed to the Material properties tab
-#---------------------------------------------------------------------------------------------------------  
-  
   
 import bpy
 import os
@@ -359,7 +331,7 @@ class ObjectProp_Xport64(bpy.types.PropertyGroup):
                 ]
     )
 
-    pass_animframe = bpy.props.BoolProperty(name = "'animFrame' DL Parameter", default = True)
+    pass_animframe = bpy.props.BoolProperty(name = "'animFrame' DL Parameter", default = True)    
     update_frame_function = bpy.props.BoolProperty(name = "*update_frame() Function", default = False)
     
     anim_Method = bpy.props.EnumProperty(
